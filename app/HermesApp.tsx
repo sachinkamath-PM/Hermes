@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Check,
@@ -15,6 +15,9 @@ import {
   Search,
   Sparkles,
   X,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
 } from "lucide-react";
 import { geoGraticule10, geoMercator, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
@@ -83,6 +86,7 @@ function CountryMap({
   hoveredRegionId,
   onSelectRegion,
   onHoverRegion,
+  onToggleCity,
 }: {
   country: AtlasFeature;
   info: CountryInfo;
@@ -92,34 +96,46 @@ function CountryMap({
   hoveredRegionId: string | null;
   onSelectRegion: (region: AdminRegion) => void;
   onHoverRegion: (region: AdminRegion | null) => void;
+  onToggleCity: (city: string) => void;
 }) {
   const projection = useMemo(
     () => geoMercator().fitExtent([[64, 52], [836, 442]], country as never),
     [country],
   );
   const path = useMemo(() => geoPath(projection), [projection]);
+  const selectedRegion = regions.find((region) => region.properties.id === selectedRegionId) ?? null;
+  const mapTransform = useMemo(() => {
+    if (!selectedRegion) return { x: 0, y: 0, k: 1 };
+    const [[x0, y0], [x1, y1]] = path.bounds(selectedRegion as never);
+    const width = Math.max(x1 - x0, 1);
+    const height = Math.max(y1 - y0, 1);
+    const k = Math.min(2.35, Math.max(1, 0.76 / Math.max(width / 900, height / 500)));
+    return { x: 450 - k * ((x0 + x1) / 2), y: 250 - k * ((y0 + y1) / 2), k };
+  }, [path, selectedRegion]);
 
   const projectedCities = info.cities
     .map((city) => ({ city, point: projection([city.longitude, city.latitude]) }))
     .filter((item): item is { city: CityPlace; point: [number, number] } => Boolean(item.point));
 
   return (
-    <svg className="country-map" viewBox="0 0 900 500" role="img" aria-label={`${country.properties.name} map with states and cities`}>
+    <svg className={joinClass("country-map", selectedRegionId && "has-selection")} viewBox="0 0 900 500" role="img" aria-label={`${country.properties.name} map with states and cities`}>
       <defs>
         <filter id="map-shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="0" dy="12" stdDeviation="12" floodColor="#062238" floodOpacity=".18" />
         </filter>
       </defs>
+      <g className="country-map-layer" style={{ transform: `translate(${mapTransform.x}px, ${mapTransform.y}px) scale(${mapTransform.k})` }}>
       <path className="country-shape" d={path(country as never) ?? ""} filter="url(#map-shadow)" />
       {regions.map((region) => {
         const isSelected = selectedRegionId === region.properties.id;
         const isHovered = hoveredRegionId === region.properties.id;
+        const isExplored = info.cities.some((city) => city.stateCode === region.properties.code && visitedCities.has(city.name));
         return (
           <path
             key={region.properties.id}
             tabIndex={0}
             aria-label={`${region.properties.name}, ${region.properties.type}`}
-            className={joinClass("state-region", isSelected && "selected", isHovered && "hovered")}
+            className={joinClass("state-region", isSelected && "selected", isHovered && "hovered", isExplored && "explored")}
             d={path(region as never) ?? ""}
             onMouseEnter={() => onHoverRegion(region)}
             onMouseLeave={() => onHoverRegion(null)}
@@ -131,11 +147,12 @@ function CountryMap({
         );
       })}
       {projectedCities.map(({ city, point }) => (
-        <g key={`${city.stateCode}-${city.name}`} className={joinClass("city-point", visitedCities.has(city.name) && "visited")} transform={`translate(${point[0]} ${point[1]})`}>
+        <g key={`${city.stateCode}-${city.name}`} tabIndex={0} role="button" aria-label={`${city.name}${visitedCities.has(city.name) ? ", visited" : ", mark as visited"}`} className={joinClass("city-point", visitedCities.has(city.name) && "visited", selectedRegion?.properties.code === city.stateCode && "in-focus")} transform={`translate(${point[0]} ${point[1]})`} onClick={(event) => { event.stopPropagation(); onToggleCity(city.name); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onToggleCity(city.name); }}>
           <circle r="7" /><circle r="2.5" />
           <text x="11" y="4">{city.name}</text>
         </g>
       ))}
+      </g>
     </svg>
   );
 }
@@ -153,6 +170,13 @@ export default function HermesApp() {
   const [hoveredRegionId, setHoveredRegionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "visited">("all");
   const [hydrated, setHydrated] = useState(false);
+  const [worldTransform, setWorldTransform] = useState({ x: 0, y: 0, k: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [transitioningCountry, setTransitioningCountry] = useState<string | null>(null);
+  const [tooltipPoint, setTooltipPoint] = useState({ x: 50, y: 50 });
+  const countryTransitionTimer = useRef<number | null>(null);
+  const dragState = useRef<{ pointerId: number; clientX: number; clientY: number; originX: number; originY: number; moved: boolean } | null>(null);
+  const suppressCountryClick = useRef(false);
 
   useEffect(() => {
     const restoreTimer = window.setTimeout(() => {
@@ -194,6 +218,10 @@ export default function HermesApp() {
     return () => { window.clearTimeout(resetTimer); controller.abort(); };
   }, [selectedCountry]);
 
+  useEffect(() => () => {
+    if (countryTransitionTimer.current) window.clearTimeout(countryTransitionTimer.current);
+  }, []);
+
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
     [],
@@ -207,7 +235,6 @@ export default function HermesApp() {
     return name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || visitedCountries.has(name));
   });
   const hoveredCountry = hovered ? countries.find((country) => country.properties.name === hovered) ?? null : null;
-  const hoveredCountryPoint = hoveredCountry ? worldPath.centroid(hoveredCountry as never) : null;
 
   const toggleCountry = (name: string) => {
     setVisitedCountries((current) => {
@@ -232,6 +259,87 @@ export default function HermesApp() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const resetWorldView = () => setWorldTransform({ x: 0, y: 0, k: 1 });
+
+  const zoomWorld = (nextScale: number, anchorX = 500, anchorY = 275) => {
+    setWorldTransform((current) => {
+      const k = Math.min(5, Math.max(1, nextScale));
+      if (k === 1) return { x: 0, y: 0, k: 1 };
+      const limitX = 500 * (k - 1);
+      const limitY = 275 * (k - 1);
+      return {
+        x: Math.min(limitX, Math.max(-limitX, anchorX - ((anchorX - current.x) * k) / current.k)),
+        y: Math.min(limitY, Math.max(-limitY, anchorY - ((anchorY - current.y) * k) / current.k)),
+        k,
+      };
+    });
+  };
+
+  const handleWorldWheel = (event: React.WheelEvent<SVGSVGElement>) => {
+    event.preventDefault();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const anchorX = ((event.clientX - bounds.left) / bounds.width) * 1000;
+    const anchorY = ((event.clientY - bounds.top) / bounds.height) * 550;
+    const factor = event.deltaY > 0 ? 0.84 : 1.18;
+    zoomWorld(worldTransform.k * factor, anchorX, anchorY);
+  };
+
+  const handleWorldPointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0 || worldTransform.k <= 1) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragState.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, originX: worldTransform.x, originY: worldTransform.y, moved: false };
+    setIsPanning(true);
+  };
+
+  const handleWorldPointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    const drag = dragState.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const dx = ((event.clientX - drag.clientX) / bounds.width) * 1000;
+    const dy = ((event.clientY - drag.clientY) / bounds.height) * 550;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    const limitX = 500 * (worldTransform.k - 1);
+    const limitY = 275 * (worldTransform.k - 1);
+    setWorldTransform((current) => ({ ...current, x: Math.min(limitX, Math.max(-limitX, drag.originX + dx)), y: Math.min(limitY, Math.max(-limitY, drag.originY + dy)) }));
+  };
+
+  const handleWorldPointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
+    const drag = dragState.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    suppressCountryClick.current = drag.moved;
+    dragState.current = null;
+    setIsPanning(false);
+    window.setTimeout(() => { suppressCountryClick.current = false; }, 0);
+  };
+
+  const updateTooltipPoint = (event: React.MouseEvent<SVGPathElement>) => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const bounds = svg.getBoundingClientRect();
+    setTooltipPoint({ x: ((event.clientX - bounds.left) / bounds.width) * 100, y: ((event.clientY - bounds.top) / bounds.height) * 100 });
+  };
+
+  const animateIntoCountry = (country: AtlasFeature) => {
+    if (suppressCountryClick.current) return;
+    const [[x0, y0], [x1, y1]] = worldPath.bounds(country as never);
+    const width = Math.max(x1 - x0, 1);
+    const height = Math.max(y1 - y0, 1);
+    const k = Math.min(4.4, Math.max(1.35, 0.7 / Math.max(width / 1000, height / 550)));
+    setTransitioningCountry(country.properties.name);
+    setWorldTransform({ x: 500 - k * ((x0 + x1) / 2), y: 275 - k * ((y0 + y1) / 2), k });
+    if (countryTransitionTimer.current) window.clearTimeout(countryTransitionTimer.current);
+    countryTransitionTimer.current = window.setTimeout(() => {
+      openCountry(country);
+      setTransitioningCountry(null);
+    }, 520);
+  };
+
+  const returnToWorld = () => {
+    setSelectedCountry(null);
+    setSelectedRegionId(null);
+    window.setTimeout(resetWorldView, 0);
+  };
+
   if (selectedCountry) {
     const name = selectedCountry.properties.name;
     const info = countryData[name] ?? { code: "", flag: "🌍", currency: "", latitude: 0, longitude: 0, states: [], cities: [] };
@@ -245,10 +353,10 @@ export default function HermesApp() {
     const shownCities = selectedRegion && selectedRegionCities.length ? selectedRegionCities : info.cities;
     return (
       <div className="hermes-app detail-mode">
-        <Header onHome={() => setSelectedCountry(null)} />
+        <Header onHome={returnToWorld} />
         <main className="country-view">
           <aside className="country-rail">
-            <button className="back-button" onClick={() => setSelectedCountry(null)}><ArrowLeft size={17} /> Back to world</button>
+            <button className="back-button" onClick={returnToWorld}><ArrowLeft size={17} /> Back to world</button>
             <div className="country-identity">
               <span className="country-flag">{info.flag}</span>
               <p className="micro-label">COUNTRY ATLAS</p>
@@ -293,6 +401,7 @@ export default function HermesApp() {
                 hoveredRegionId={hoveredRegionId}
                 onHoverRegion={(region) => setHoveredRegionId(region?.properties.id ?? null)}
                 onSelectRegion={(region) => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
+                onToggleCity={(city) => toggleCity(name, city)}
               />
               {regionsLoading && <div className="map-loading"><span /> Drawing regional boundaries…</div>}
               {activeRegion && (
@@ -302,6 +411,7 @@ export default function HermesApp() {
                   {selectedRegion?.properties.id === activeRegion.properties.id && <Check size={17} />}
                 </div>
               )}
+              {selectedRegion && <button className="reset-country-view" onClick={() => setSelectedRegionId(null)}><RotateCcw size={14} /> Entire country</button>}
               <span className="map-caption"><Compass size={15} /> Hover a region · click to select</span>
             </div>
             <section className="city-section">
@@ -366,23 +476,30 @@ export default function HermesApp() {
               </div>}
             </div>
           </div>
-          <div className="world-map-card">
+          <div className={joinClass("world-map-card", hovered && "has-country-hover", transitioningCountry && "is-entering-country")}>
             <div className="map-card-title"><Globe2 size={15} /><span>Personal world atlas</span><small>{countries.length} destinations</small></div>
             <div className="map-legend"><span><i className="visited" /> Visited</span><span><i /> Not yet</span></div>
-            <svg className="world-map" viewBox="0 0 1000 550" role="img" aria-label="Interactive world map">
+            <div className="map-zoom-controls" aria-label="Map zoom controls">
+              <button onClick={() => zoomWorld(worldTransform.k * 1.35)} aria-label="Zoom in"><ZoomIn size={16} /></button>
+              <button onClick={() => zoomWorld(worldTransform.k / 1.35)} aria-label="Zoom out" disabled={worldTransform.k <= 1}><ZoomOut size={16} /></button>
+              <button onClick={resetWorldView} aria-label="Reset map" disabled={worldTransform.k <= 1}><RotateCcw size={15} /></button>
+            </div>
+            <svg className={joinClass("world-map", isPanning && "is-panning")} viewBox="0 0 1000 550" role="img" aria-label="Interactive world map" onWheel={handleWorldWheel} onPointerDown={handleWorldPointerDown} onPointerMove={handleWorldPointerMove} onPointerUp={handleWorldPointerUp} onPointerCancel={handleWorldPointerUp}>
               <defs>
                 <filter id="country-glow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#ed7045" floodOpacity=".48" /></filter>
               </defs>
+              <g className={joinClass("world-map-layer", hovered && "has-hover")} style={{ transform: `translate(${worldTransform.x}px, ${worldTransform.y}px) scale(${worldTransform.k})` }}>
               <path className="graticule" d={worldPath(graticule as never) ?? ""} />
               {countries.map((country) => {
                 const name = country.properties.name;
                 const isVisited = visitedCountries.has(name);
-                return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(name)} onBlur={() => setHovered(null)} onClick={() => openCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openCountry(country); }} />;
+                return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered", transitioningCountry === name && "entering")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseMove={updateTooltipPoint} onMouseLeave={() => setHovered(null)} onFocus={() => { setHovered(name); const [x, y] = worldPath.centroid(country as never); setTooltipPoint({ x: x / 10, y: y / 5.5 }); }} onBlur={() => setHovered(null)} onClick={() => animateIntoCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") animateIntoCountry(country); }} />;
               })}
               {hoveredCountry && <path className="active-country-halo" d={worldPath(hoveredCountry as never) ?? ""} />}
+              </g>
             </svg>
-            {hovered && <div className="country-tooltip" style={hoveredCountryPoint ? { "--tooltip-x": `${hoveredCountryPoint[0] / 10}%`, "--tooltip-y": `${hoveredCountryPoint[1] / 5.5}%` } as React.CSSProperties : undefined}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
-            <div className="map-instruction"><Compass size={16} /><span>Click any country to open its map</span></div>
+            {hovered && !isPanning && <div className="country-tooltip" style={{ "--tooltip-x": `${tooltipPoint.x}%`, "--tooltip-y": `${tooltipPoint.y}%` } as React.CSSProperties}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
+            <div className="map-instruction"><Compass size={16} /><span>{worldTransform.k > 1 ? "Drag to explore · scroll to zoom" : "Click a country · scroll to zoom"}</span></div>
             <div className="map-scale"><span /><span /><span /><small>EXPLORE</small></div>
           </div>
         </section>
