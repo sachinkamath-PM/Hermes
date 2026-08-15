@@ -19,3 +19,6 @@
 @media(max-width:720px){.world-stage{padding:24px 10px}.world-map-card{min-height:430px;padding:48px 4px 28px;border-radius:14px}.world-map-card:after{inset:7px;border-radius:9px}}
 .world-map-card{background:linear-gradient(145deg,#103451,#061d31 74%)}.world-map{max-height:calc(100vh - 155px)}.graticule{stroke:rgba(205,231,229,.065);stroke-dasharray:1.25 3}.map-country{stroke-width:.68}.map-country:hover,.map-country.hovered{stroke-width:1.15}
 @media(max-width:980px){.world-map{max-height:none}}
+.atlas-layout{grid-template-columns:258px minmax(0,1fr)}.world-stage{padding:22px 12px 24px}.atlas-toolbar{margin-bottom:14px}.world-map-card{min-height:calc(100vh - 146px);padding:52px 4px 28px}.world-map-card:after{inset:8px}.world-map{max-height:calc(100vh - 142px)}
+@media(max-width:980px){.atlas-layout{grid-template-columns:230px minmax(0,1fr)}.world-stage{padding:20px 8px 24px}.world-map-card{min-height:560px;padding-left:2px;padding-right:2px}.world-map{max-height:none}}
+@media(max-width:720px){.world-stage{padding:20px 6px}.world-map-card{min-height:430px;padding:46px 0 26px}}

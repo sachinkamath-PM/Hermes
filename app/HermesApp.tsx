@@ -195,7 +195,7 @@ export default function HermesApp() {
   }, [selectedCountry]);
 
   const worldProjection = useMemo(
-    () => geoMercator().fitExtent([[28, 18], [972, 532]], { type: "FeatureCollection", features: countries } as never),
+    () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
     [],
   );
   const worldPath = useMemo(() => geoPath(worldProjection), [worldProjection]);
