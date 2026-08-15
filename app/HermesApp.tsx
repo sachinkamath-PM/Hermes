@@ -59,6 +59,9 @@ const countryData = countryDataJson as Record<string, CountryInfo>;
 const citySearchIndex = Object.entries(countryData).flatMap(([countryName, info]) =>
   info.cities.map((city) => ({ countryName, city })),
 );
+const regionSearchIndex = Object.entries(countryData).flatMap(([countryName, info]) =>
+  info.states.map((region) => ({ countryName, region })),
+);
 const STORAGE_KEY = "hermes_travel_atlas_v1";
 const initialVisited = ["India", "France", "Japan", "United States of America"];
 const initialCities: Record<string, string[]> = {
@@ -292,6 +295,7 @@ export default function HermesApp() {
   const [visitedCities, setVisitedCities] = useState<Record<string, string[]>>(initialCities);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [manualCityName, setManualCityName] = useState("");
   const [hovered, setHovered] = useState<string | null>(null);
   const [regions, setRegions] = useState<AdminRegion[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -304,6 +308,7 @@ export default function HermesApp() {
   const [transitioningCountry, setTransitioningCountry] = useState<string | null>(null);
   const [tooltipPoint, setTooltipPoint] = useState({ x: 50, y: 50 });
   const countryTransitionTimer = useRef<number | null>(null);
+  const pendingRegionCode = useRef<string | null>(null);
   const dragState = useRef<{ pointerId: number; clientX: number; clientY: number; originX: number; originY: number; moved: boolean } | null>(null);
   const suppressCountryClick = useRef(false);
 
@@ -341,7 +346,15 @@ export default function HermesApp() {
     if (!countryCode) return () => { window.clearTimeout(resetTimer); controller.abort(); };
     fetch(`/admin1/${countryCode}.json`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("No regional map")))
-      .then((collection: { features?: AdminRegion[] }) => setRegions(collection.features ?? []))
+      .then((collection: { features?: AdminRegion[] }) => {
+        const nextRegions = collection.features ?? [];
+        setRegions(nextRegions);
+        if (pendingRegionCode.current) {
+          const match = nextRegions.find((region) => region.properties.code === pendingRegionCode.current);
+          if (match) setSelectedRegionId(match.properties.id);
+          pendingRegionCode.current = null;
+        }
+      })
       .catch((error: Error) => { if (error.name !== "AbortError") setRegions([]); })
       .finally(() => { if (!controller.signal.aborted) setRegionsLoading(false); });
     return () => { window.clearTimeout(resetTimer); controller.abort(); };
@@ -367,9 +380,12 @@ export default function HermesApp() {
     ...citySearchIndex
       .filter(({ city, countryName }) => city.name.toLowerCase().includes(normalizedQuery) || `${city.name} ${countryName}`.toLowerCase().includes(normalizedQuery))
       .map((place) => ({ kind: "city" as const, ...place })),
+    ...regionSearchIndex
+      .filter(({ region, countryName }) => region.name.toLowerCase().includes(normalizedQuery) || `${region.name} ${countryName}`.toLowerCase().includes(normalizedQuery))
+      .map((place) => ({ kind: "region" as const, ...place })),
   ].sort((a, b) => {
-    const aName = a.kind === "country" ? a.country.properties.name : a.city.name;
-    const bName = b.kind === "country" ? b.country.properties.name : b.city.name;
+    const aName = a.kind === "country" ? a.country.properties.name : a.kind === "city" ? a.city.name : a.region.name;
+    const bName = b.kind === "country" ? b.country.properties.name : b.kind === "city" ? b.city.name : b.region.name;
     const aStarts = aName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
     const bStarts = bName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
     return aStarts - bStarts || aName.localeCompare(bName);
@@ -417,6 +433,26 @@ export default function HermesApp() {
       return { ...current, [countryName]: [...next] };
     });
     openCountry(country);
+  };
+
+  const openRegion = (countryName: string, regionCode: string) => {
+    const country = countries.find((candidate) => candidate.properties.name === countryName);
+    if (!country) return;
+    setRegions([]);
+    pendingRegionCode.current = regionCode;
+    openCountry(country);
+  };
+
+  const addManualCity = (countryName: string) => {
+    const cityName = manualCityName.trim();
+    if (!cityName) return;
+    setVisitedCountries((current) => new Set(current).add(countryName));
+    setVisitedCities((current) => {
+      const existing = current[countryName] ?? [];
+      if (existing.some((city) => city.toLowerCase() === cityName.toLowerCase())) return current;
+      return { ...current, [countryName]: [...existing, cityName] };
+    });
+    setManualCityName("");
   };
 
   const resetWorldView = () => setWorldTransform({ x: 0, y: 0, k: 1 });
@@ -511,6 +547,9 @@ export default function HermesApp() {
       ? info.cities.filter((city) => city.stateCode === selectedRegion.properties.code)
       : info.cities;
     const shownCities = selectedRegion ? selectedRegionCities : info.cities;
+    const featuredCityNames = new Set(info.cities.map((city) => city.name));
+    const manuallyAddedCities = [...selectedVisitedCities].filter((city) => !featuredCityNames.has(city));
+    const countryCityTotal = featuredCityNames.size + manuallyAddedCities.length;
     const selectedTerritoryLayout = territoryLayouts[info.code];
     const selectedRemoteCodes = new Set(selectedTerritoryLayout?.insets.map((inset) => inset.code) ?? []);
     const mainRegions = regions.filter((region) => !selectedRemoteCodes.has(region.properties.code));
@@ -525,13 +564,13 @@ export default function HermesApp() {
               <span className="country-flag">{info.flag}</span>
               <p className="micro-label">COUNTRY ATLAS</p>
               <h1>{name}</h1>
-              <p>{info.states.length || "Regional"} states & regions · {info.cities.length} featured cities</p>
+              <p>{info.states.length || "Regional"} states & regions · {countryCityTotal} cities & places</p>
             </div>
             <button className={joinClass("visited-country-button", visitedCountries.has(name) && "is-visited")} onClick={() => toggleCountry(name)}>
               {visitedCountries.has(name) ? <><Check size={18} /> Visited country</> : <><Plus size={18} /> Mark as visited</>}
             </button>
             <div className="country-stats">
-              <div><span>City progress</span><strong>{selectedVisitedCities.size}<small> / {info.cities.length}</small></strong></div>
+              <div><span>City progress</span><strong>{selectedVisitedCities.size}<small> / {countryCityTotal}</small></strong></div>
               <div><span>Currency</span><strong>{info.currency || "—"}</strong></div>
             </div>
             <div className="states-panel">
@@ -591,7 +630,16 @@ export default function HermesApp() {
               <span className="map-caption"><Compass size={15} /> Hover a region · click to select</span>
             </div>
             <section className="city-section">
-              <div className="section-heading-row"><div><p className="micro-label">CITY LOG</p><h2>{selectedRegion ? selectedRegion.properties.name : "Top cities"}</h2></div><span>{selectedRegion ? <button className="clear-region" onClick={() => setSelectedRegionId(null)}>Show all cities</button> : `${selectedVisitedCities.size} of ${info.cities.length} visited`}</span></div>
+              <div className="section-heading-row"><div><p className="micro-label">CITY LOG</p><h2>{selectedRegion ? selectedRegion.properties.name : "Cities & places"}</h2></div><span>{selectedRegion ? <button className="clear-region" onClick={() => setSelectedRegionId(null)}>Show all cities</button> : `${selectedVisitedCities.size} of ${countryCityTotal} visited`}</span></div>
+              <form className="quick-place-add" onSubmit={(event) => { event.preventDefault(); addManualCity(name); }}>
+                <span><MapPin size={18} /></span>
+                <input value={manualCityName} onChange={(event) => setManualCityName(event.target.value)} placeholder={`Add any city or place in ${name}`} aria-label={`Add a city or place in ${name}`} />
+                <button type="submit" disabled={!manualCityName.trim()}><Plus size={16} /> Add place</button>
+              </form>
+              {manuallyAddedCities.length > 0 && <div className="manual-place-list">
+                <span>Your added places</span>
+                <div>{manuallyAddedCities.map((city) => <button key={city} onClick={() => toggleCity(name, city)}><MapPin size={13} /> {city}<X size={13} /></button>)}</div>
+              </div>}
               <div className="city-grid">
                 {shownCities.map((city) => {
                   const isVisited = selectedVisitedCities.has(city.name);
@@ -645,7 +693,7 @@ export default function HermesApp() {
             <div><p className="micro-label">INTERACTIVE WORLD MAP</p><h2>Choose a country</h2></div>
             <div className="search-wrap">
               <Search size={18} />
-              <input value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} placeholder="Search countries or cities" aria-label="Add a country or city" />
+              <input value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} placeholder="Search countries, cities or regions" aria-label="Find a country, city or region" />
               {query && <button aria-label="Clear search" onClick={() => setQuery("")}><X size={16} /></button>}
               {searchOpen && query && <div className="search-results">
                 {placeResults.map((result) => result.kind === "country" ? (
@@ -654,14 +702,20 @@ export default function HermesApp() {
                     <span><strong>{result.country.properties.name}</strong><small>Open country atlas</small></span>
                     {visitedCountries.has(result.country.properties.name) && <Check size={15} />}
                   </button>
-                ) : (
+                ) : result.kind === "city" ? (
                   <button key={`city-${result.countryName}-${result.city.stateCode}-${result.city.name}`} onClick={() => addPlace(result.countryName, result.city.name)}>
                     <span className="place-result-pin"><MapPin size={15} /></span>
                     <span><strong>{result.city.name}</strong><small>{countryData[result.countryName]?.flag ?? "🌍"} {result.countryName} · Add place</small></span>
                     {(visitedCities[result.countryName] ?? []).includes(result.city.name) && <Check size={15} />}
                   </button>
+                ) : (
+                  <button key={`region-${result.countryName}-${result.region.code}-${result.region.name}`} onClick={() => openRegion(result.countryName, result.region.code)}>
+                    <span className="place-result-pin"><Compass size={15} /></span>
+                    <span><strong>{result.region.name}</strong><small>{countryData[result.countryName]?.flag ?? "🌍"} {result.countryName} · Open region</small></span>
+                    <ChevronRight size={15} />
+                  </button>
                 ))}
-                {!placeResults.length && <p>No country or featured city found.</p>}
+                {!placeResults.length && <p>No matching country, city or region found.</p>}
               </div>}
             </div>
           </div>
