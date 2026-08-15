@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Award,
   BookOpen,
+  CalendarDays,
   Check,
   ChevronRight,
   Compass,
@@ -18,6 +19,10 @@ import {
   Sparkles,
   Star,
   Trash2,
+  Users,
+  Wallet,
+  ListChecks,
+  Route,
   Trophy,
   X,
   ZoomIn,
@@ -56,6 +61,10 @@ type CountryInfo = {
 type Achievement = { title: string; description: string; icon: string; progress: number; target: number; xp: number };
 type JournalStatus = "visited" | "planned" | "dreaming";
 type JournalEntry = { id: string; country: string; place: string; date: string; status: JournalStatus; rating: number; note: string; createdAt: number };
+type TripDestination = { id: string; country: string; place: string };
+type ItineraryItem = { id: string; date: string; time: string; title: string };
+type ChecklistItem = { id: string; text: string; done: boolean };
+type Trip = { id: string; title: string; startDate: string; endDate: string; budget: string; travellers: number; status: "planning" | "upcoming" | "completed"; destinations: TripDestination[]; itinerary: ItineraryItem[]; checklist: ChecklistItem[]; createdAt: number };
 
 const atlas = feature(
   world as never,
@@ -83,6 +92,9 @@ const initialCities: Record<string, string[]> = {
 function joinClass(...classes: Array<string | false | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
+
+function currentTimestamp() { return new Date().getTime(); }
+function createLocalId() { return globalThis.crypto?.randomUUID?.() ?? `${new Date().getTime()}-${Math.random()}`; }
 
 function HermesMark() {
   return (
@@ -185,6 +197,31 @@ function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { 
       </section>
     </div>
   );
+}
+
+function TripPanel({ trips, defaultCountry, onCreate, onUpdate, onDelete, onComplete, onClose }: { trips: Trip[]; defaultCountry: string; onCreate: (trip: Trip) => void; onUpdate: (trip: Trip) => void; onDelete: (id: string) => void; onComplete: (id: string) => void; onClose: () => void }) {
+  const [activeId, setActiveId] = useState<string | null>(trips[0]?.id ?? null);
+  const [creating, setCreating] = useState(trips.length === 0);
+  const [title, setTitle] = useState(""); const [startDate, setStartDate] = useState(""); const [endDate, setEndDate] = useState(""); const [budget, setBudget] = useState(""); const [travellers, setTravellers] = useState(1);
+  const [routeCountry, setRouteCountry] = useState(defaultCountry); const [routePlace, setRoutePlace] = useState(""); const [routeDraft, setRouteDraft] = useState<TripDestination[]>([]);
+  const [planDate, setPlanDate] = useState(""); const [planTime, setPlanTime] = useState(""); const [planTitle, setPlanTitle] = useState(""); const [checkText, setCheckText] = useState("");
+  const activeTrip = trips.find((trip) => trip.id === activeId) ?? null;
+  const [openedAt] = useState(currentTimestamp);
+  const addRouteStop = () => { if (!routePlace.trim()) return; setRouteDraft((current) => [...current, { id: createLocalId(), country: routeCountry, place: routePlace.trim() }]); setRoutePlace(""); };
+  const createTrip = (event: React.FormEvent) => {
+    event.preventDefault(); if (!title.trim() || !routeDraft.length) return;
+    const id = createLocalId(); onCreate({ id, title: title.trim(), startDate, endDate, budget, travellers, status: startDate ? "upcoming" : "planning", destinations: routeDraft, itinerary: [], checklist: [], createdAt: currentTimestamp() });
+    setActiveId(id); setCreating(false); setTitle(""); setStartDate(""); setEndDate(""); setBudget(""); setTravellers(1); setRouteDraft([]);
+  };
+  const addItinerary = () => { if (!activeTrip || !planTitle.trim()) return; onUpdate({ ...activeTrip, itinerary: [...activeTrip.itinerary, { id: createLocalId(), date: planDate, time: planTime, title: planTitle.trim() }] }); setPlanTitle(""); setPlanTime(""); };
+  const addChecklist = () => { if (!activeTrip || !checkText.trim()) return; onUpdate({ ...activeTrip, checklist: [...activeTrip.checklist, { id: createLocalId(), text: checkText.trim(), done: false }] }); setCheckText(""); };
+  const countdown = activeTrip?.startDate ? Math.ceil((new Date(`${activeTrip.startDate}T00:00:00`).getTime() - openedAt) / 86400000) : null;
+  return <div className="trip-backdrop"><section className="trip-panel" role="dialog" aria-modal="true" aria-labelledby="trip-title">
+    <button className="trip-close" onClick={onClose} aria-label="Close trip planner"><X size={18} /></button>
+    <header className="trip-header"><span><Plane size={25} /></span><div><p className="micro-label">FROM DREAM TO DEPARTURE</p><h2 id="trip-title">Trip planner</h2><p>Build the route, organize each day, and travel ready.</p></div><button onClick={() => { setCreating(true); setActiveId(null); }}><Plus size={15} /> New trip</button></header>
+    <div className="trip-layout"><aside className="trip-list"><div className="trip-list-title"><span>MY TRIPS</span><small>{trips.length}</small></div>{trips.length ? trips.map((trip) => <button key={trip.id} className={activeId === trip.id && !creating ? "active" : ""} onClick={() => { setActiveId(trip.id); setCreating(false); }}><span>{trip.status === "completed" ? "✓" : "✈"}</span><span><strong>{trip.title}</strong><small>{trip.destinations.length} stops · {trip.startDate || "Dates open"}</small></span><ChevronRight size={14} /></button>) : <div className="no-trips"><span>🧳</span><strong>No trips yet</strong><p>Your next adventure starts here.</p></div>}</aside>
+      <main className="trip-workspace">{creating ? <form className="create-trip-form" onSubmit={createTrip}><div className="trip-form-intro"><p className="micro-label">NEW ADVENTURE</p><h3>Where are you going?</h3><p>Start with the essentials. You can shape each day afterwards.</p></div><div className="trip-form-grid"><label className="wide"><span>Trip name</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Summer in Japan" required /></label><label><span>Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label><span>End date</span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label><span>Budget</span><input value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="e.g. ₹1,50,000" /></label><label><span>Travellers</span><input type="number" min="1" max="50" value={travellers} onChange={(event) => setTravellers(Number(event.target.value))} /></label></div><div className="route-builder"><div><small>ROUTE</small><strong>Add every stop</strong></div><div className="route-fields"><select value={routeCountry} onChange={(event) => setRouteCountry(event.target.value)}>{countryNames.map((name) => <option key={name}>{name}</option>)}</select><input value={routePlace} onChange={(event) => setRoutePlace(event.target.value)} placeholder="City or place" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRouteStop(); } }} /><button type="button" onClick={addRouteStop}><Plus size={15} /> Add</button></div>{routeDraft.length > 0 && <div className="route-draft">{routeDraft.map((stop,index) => <span key={stop.id}><b>{index + 1}</b>{stop.place}, {stop.country}<button type="button" onClick={() => setRouteDraft((current) => current.filter((item) => item.id !== stop.id))}><X size={12} /></button></span>)}</div>}</div><button className="create-trip-button" type="submit" disabled={!title.trim() || !routeDraft.length}><Plane size={16} /> Create trip</button></form> : activeTrip ? <div className="trip-detail"><div className="trip-detail-hero"><div><span className={`trip-status ${activeTrip.status}`}>{activeTrip.status}</span><h3>{activeTrip.title}</h3><p>{activeTrip.destinations.map((destination) => destination.place).join(" → ")}</p></div><div className="trip-countdown"><strong>{activeTrip.status === "completed" ? "Done" : countdown === null ? "—" : countdown > 0 ? countdown : "Now"}</strong><span>{activeTrip.status === "completed" ? "completed" : countdown && countdown > 0 ? "days to go" : "trip timing"}</span></div></div><div className="trip-facts"><span><CalendarDays size={16} /><b>{activeTrip.startDate || "Open dates"}</b><small>{activeTrip.endDate ? `to ${activeTrip.endDate}` : "Flexible"}</small></span><span><Users size={16} /><b>{activeTrip.travellers}</b><small>travellers</small></span><span><Wallet size={16} /><b>{activeTrip.budget || "Open"}</b><small>budget</small></span><span><Route size={16} /><b>{activeTrip.destinations.length}</b><small>stops</small></span></div><div className="trip-route"><p className="trip-section-label">YOUR ROUTE</p><div>{activeTrip.destinations.map((stop,index) => <span key={stop.id}><i>{index + 1}</i><strong>{stop.place}</strong><small>{countryData[stop.country]?.flag ?? "🌍"} {stop.country}</small></span>)}</div></div><div className="planner-columns"><section><div className="planner-title"><div><ListChecks size={17} /><span><strong>Itinerary</strong><small>{activeTrip.itinerary.length} plans</small></span></div></div><div className="inline-plan-form"><input type="date" value={planDate} onChange={(event) => setPlanDate(event.target.value)} /><input type="time" value={planTime} onChange={(event) => setPlanTime(event.target.value)} /><input value={planTitle} onChange={(event) => setPlanTitle(event.target.value)} placeholder="Activity, stay or transport" onKeyDown={(event) => { if (event.key === "Enter") addItinerary(); }} /><button onClick={addItinerary}><Plus size={15} /></button></div><div className="itinerary-list">{activeTrip.itinerary.length ? activeTrip.itinerary.sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).map((item,index) => <article key={item.id}><span>{index + 1}</span><div><strong>{item.title}</strong><small>{item.date || "Any day"} {item.time}</small></div><button onClick={() => onUpdate({ ...activeTrip, itinerary: activeTrip.itinerary.filter((entry) => entry.id !== item.id) })}><Trash2 size={13} /></button></article>) : <p className="planner-empty">Add the first moment to your itinerary.</p>}</div></section><section><div className="planner-title"><div><Check size={17} /><span><strong>Checklist</strong><small>{activeTrip.checklist.filter((item) => item.done).length}/{activeTrip.checklist.length} ready</small></span></div></div><div className="check-add"><input value={checkText} onChange={(event) => setCheckText(event.target.value)} placeholder="Passport, tickets, insurance…" onKeyDown={(event) => { if (event.key === "Enter") addChecklist(); }} /><button onClick={addChecklist}><Plus size={15} /></button></div><div className="check-list">{activeTrip.checklist.length ? activeTrip.checklist.map((item) => <label key={item.id} className={item.done ? "done" : ""}><input type="checkbox" checked={item.done} onChange={() => onUpdate({ ...activeTrip, checklist: activeTrip.checklist.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry) })} /><span>{item.text}</span><button onClick={() => onUpdate({ ...activeTrip, checklist: activeTrip.checklist.filter((entry) => entry.id !== item.id) })}><X size={12} /></button></label>) : <p className="planner-empty">Add what you need before departure.</p>}</div></section></div><div className="trip-actions">{activeTrip.status !== "completed" && <button className="complete-trip" onClick={() => onComplete(activeTrip.id)}><Check size={15} /> Complete trip & update atlas</button>}<button className="delete-trip" onClick={() => { onDelete(activeTrip.id); setActiveId(null); setCreating(true); }}><Trash2 size={14} /> Delete trip</button></div></div> : null}</main></div>
+  </section></div>;
 }
 
 const territoryLayouts: Record<string, { mainLabel: string; insets: Array<{ code: string; label: string }> }> = {
@@ -403,6 +440,8 @@ export default function HermesApp() {
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [tripsOpen, setTripsOpen] = useState(false);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [regions, setRegions] = useState<AdminRegion[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -424,10 +463,11 @@ export default function HermesApp() {
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]>; journal?: JournalEntry[] };
+          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]>; journal?: JournalEntry[]; trips?: Trip[] };
           if (Array.isArray(parsed.countries)) setVisitedCountries(new Set(parsed.countries));
           if (parsed.cities && typeof parsed.cities === "object") setVisitedCities(parsed.cities);
           if (Array.isArray(parsed.journal)) setJournalEntries(parsed.journal);
+          if (Array.isArray(parsed.trips)) setTrips(parsed.trips);
         }
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -439,8 +479,8 @@ export default function HermesApp() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities, journal: journalEntries }));
-  }, [hydrated, visitedCountries, visitedCities, journalEntries]);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities, journal: journalEntries, trips }));
+  }, [hydrated, visitedCountries, visitedCities, journalEntries, trips]);
 
   useEffect(() => {
     const countryCode = selectedCountry ? countryData[selectedCountry.properties.name]?.code : null;
@@ -473,11 +513,11 @@ export default function HermesApp() {
   }, []);
 
   useEffect(() => {
-    if (!achievementsOpen && !journalOpen) return;
-    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setAchievementsOpen(false); setJournalOpen(false); } };
+    if (!achievementsOpen && !journalOpen && !tripsOpen) return;
+    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); } };
     window.addEventListener("keydown", closePanels);
     return () => window.removeEventListener("keydown", closePanels);
-  }, [achievementsOpen, journalOpen]);
+  }, [achievementsOpen, journalOpen, tripsOpen]);
 
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
@@ -502,7 +542,7 @@ export default function HermesApp() {
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
   const achievementOverlay = achievementsOpen ? <AchievementPanel achievements={achievements} level={explorerLevel} rank={explorerRank} xp={explorerXp} xpIntoLevel={xpIntoLevel} onClose={() => setAchievementsOpen(false)} /> : null;
   const saveJournalEntry = (entry: Omit<JournalEntry, "id" | "createdAt">) => {
-    const nextEntry: JournalEntry = { ...entry, id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`, createdAt: Date.now() };
+    const nextEntry: JournalEntry = { ...entry, id: createLocalId(), createdAt: currentTimestamp() };
     setJournalEntries((current) => [nextEntry, ...current]);
     if (entry.status === "visited") {
       setVisitedCountries((current) => new Set(current).add(entry.country));
@@ -513,6 +553,15 @@ export default function HermesApp() {
     }
   };
   const journalOverlay = journalOpen ? <JournalPanel entries={journalEntries} defaultCountry={selectedCountry?.properties.name ?? [...visitedCountries][0] ?? countryNames[0]} onSave={saveJournalEntry} onDelete={(id) => setJournalEntries((current) => current.filter((entry) => entry.id !== id))} onClose={() => setJournalOpen(false)} /> : null;
+  const completeTrip = (id: string) => {
+    const trip = trips.find((candidate) => candidate.id === id); if (!trip) return;
+    setTrips((current) => current.map((candidate) => candidate.id === id ? { ...candidate, status: "completed" } : candidate));
+    setVisitedCountries((current) => { const next = new Set(current); trip.destinations.forEach((stop) => next.add(stop.country)); return next; });
+    setVisitedCities((current) => { const next = { ...current }; trip.destinations.forEach((stop) => { const places = new Set(next[stop.country] ?? []); places.add(stop.place); next[stop.country] = [...places]; }); return next; });
+    setJournalEntries((current) => [...trip.destinations.map((stop, index) => ({ id: createLocalId(), country: stop.country, place: stop.place, date: trip.endDate || trip.startDate, status: "visited" as const, rating: 0, note: `Completed as part of ${trip.title}.`, createdAt: currentTimestamp() + index })), ...current]);
+  };
+  const tripOverlay = tripsOpen ? <TripPanel trips={trips} defaultCountry={selectedCountry?.properties.name ?? [...visitedCountries][0] ?? countryNames[0]} onCreate={(trip) => setTrips((current) => [trip, ...current])} onUpdate={(trip) => setTrips((current) => current.map((candidate) => candidate.id === trip.id ? trip : candidate))} onDelete={(id) => setTrips((current) => current.filter((trip) => trip.id !== id))} onComplete={completeTrip} onClose={() => setTripsOpen(false)} /> : null;
+  const nextTrip = trips.filter((trip) => trip.status !== "completed").sort((a,b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"))[0];
   const normalizedQuery = query.trim().toLowerCase();
   const placeResults = normalizedQuery ? [
     ...countries
@@ -697,7 +746,7 @@ export default function HermesApp() {
     const remoteRegions = regions.filter((region) => selectedRemoteCodes.has(region.properties.code));
     return (
       <div className="hermes-app detail-mode">
-        <Header onHome={returnToWorld} onAchievements={() => { setJournalOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setJournalOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} />
+        <Header onHome={returnToWorld} onAchievements={() => { setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
         <main className="country-view">
           <aside className="country-rail">
             <button className="back-button" onClick={returnToWorld}><ArrowLeft size={17} /> Back to world</button>
@@ -799,13 +848,14 @@ export default function HermesApp() {
         </main>
         {achievementOverlay}
         {journalOverlay}
+        {tripOverlay}
       </div>
     );
   }
 
   return (
     <div className="hermes-app">
-      <Header onAchievements={() => { setJournalOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setJournalOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} />
+      <Header onAchievements={() => { setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
       <main className="atlas-layout">
         <aside className="journey-panel">
           <p className="micro-label">YOUR TRAVEL ATLAS</p>
@@ -824,6 +874,7 @@ export default function HermesApp() {
             <em>{unlockedAchievementCount}<Trophy size={13} /></em>
           </button>
           <button className="journal-quick-card" onClick={() => setJournalOpen(true)}><span><BookOpen size={18} /></span><span><small>TRAVEL JOURNAL</small><strong>{journalEntries.length ? `${journalEntries.length} memories & plans` : "Start your timeline"}</strong></span><ChevronRight size={16} /></button>
+          <button className="trip-quick-card" onClick={() => setTripsOpen(true)}><span><Plane size={18} /></span><span><small>NEXT ADVENTURE</small><strong>{nextTrip ? nextTrip.title : "Plan a new trip"}</strong></span><ChevronRight size={16} /></button>
           <div className="recent-section">
             <div className="section-title-row"><span>Recent pins</span><button onClick={() => setFilter(filter === "all" ? "visited" : "all")}>{filter === "all" ? "Visited only" : "Show all"}</button></div>
             <div className="recent-list">
@@ -898,15 +949,16 @@ export default function HermesApp() {
       </main>
       {achievementOverlay}
       {journalOverlay}
+      {tripOverlay}
     </div>
   );
 }
 
-function Header({ onHome, onAchievements, onJournal, achievementsActive = false, journalActive = false }: { onHome?: () => void; onAchievements?: () => void; onJournal?: () => void; achievementsActive?: boolean; journalActive?: boolean }) {
+function Header({ onHome, onAchievements, onJournal, onTrips, achievementsActive = false, journalActive = false, tripsActive = false }: { onHome?: () => void; onAchievements?: () => void; onJournal?: () => void; onTrips?: () => void; achievementsActive?: boolean; journalActive?: boolean; tripsActive?: boolean }) {
   return (
     <header className="hermes-header">
       <button className="brand-button" onClick={onHome} aria-label="Hermes home"><HermesMark /><span><strong>Hermes</strong><small>by BuildQuick</small></span></button>
-      <nav aria-label="Primary navigation"><button className={!achievementsActive && !journalActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button><Plane size={17} /> Trips</button></nav>
+      <nav aria-label="Primary navigation"><button className={!achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={onTrips}><Plane size={17} /> Trips</button></nav>
       <div className="header-actions"><button className="menu-button" aria-label="Open menu"><Menu size={19} /></button><span className="profile-avatar">SK</span></div>
     </header>
   );
