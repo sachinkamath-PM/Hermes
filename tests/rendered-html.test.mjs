@@ -39,7 +39,12 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /localStorage\.setItem/);
   assert.match(app, /state-region/);
   assert.match(app, /onSelectRegion/);
+  assert.match(app, /FeatureCollection/);
+  assert.match(app, /territory-marker/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);
-  assert.ok(JSON.parse(indiaRegions).features.length >= 30);
+  const indiaFeatures = JSON.parse(indiaRegions).features;
+  assert.ok(indiaFeatures.length >= 30);
+  assert.ok(indiaFeatures.some((region) => region.properties.name === "Lakshadweep"));
+  assert.ok(indiaFeatures.some((region) => region.properties.name === "Andaman and Nicobar Islands"));
   await assert.rejects(access(new URL("../app/_sites-preview", templateRoot)));
 });

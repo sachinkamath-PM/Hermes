@@ -98,12 +98,30 @@ function CountryMap({
   onHoverRegion: (region: AdminRegion | null) => void;
   onToggleCity: (city: string) => void;
 }) {
+  const mapGeometry = useMemo(
+    () => regions.length
+      ? { type: "FeatureCollection", features: [country, ...regions] }
+      : country,
+    [country, regions],
+  );
   const projection = useMemo(
-    () => geoMercator().fitExtent([[64, 52], [836, 442]], country as never),
-    [country],
+    () => geoMercator().fitExtent([[52, 42], [848, 452]], mapGeometry as never),
+    [mapGeometry],
   );
   const path = useMemo(() => geoPath(projection), [projection]);
   const selectedRegion = regions.find((region) => region.properties.id === selectedRegionId) ?? null;
+  const islandTerritories = useMemo(() => regions.flatMap((region) => {
+    if ((region.geometry as { type?: string }).type !== "MultiPolygon") return [];
+    if (!/(island|archipelago|atoll|lakshadweep)/i.test(region.properties.name)) return [];
+    const [[x0, y0], [x1, y1]] = path.bounds(region as never);
+    const width = Math.max(x1 - x0, 0);
+    const height = Math.max(y1 - y0, 0);
+    const boundsArea = width * height;
+    const coverage = boundsArea ? path.area(region as never) / boundsArea : 1;
+    const point = path.centroid(region as never);
+    if (boundsArea < 50 || coverage > 0.16 || !point.every(Number.isFinite)) return [];
+    return [{ region, point: point as [number, number] }];
+  }), [path, regions]);
   const mapTransform = useMemo(() => {
     if (!selectedRegion) return { x: 0, y: 0, k: 1 };
     const [[x0, y0], [x1, y1]] = path.bounds(selectedRegion as never);
@@ -144,6 +162,30 @@ function CountryMap({
             onClick={() => onSelectRegion(region)}
             onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelectRegion(region); }}
           />
+        );
+      })}
+      {islandTerritories.map(({ region, point }) => {
+        const isSelected = selectedRegionId === region.properties.id;
+        const isHovered = hoveredRegionId === region.properties.id;
+        return (
+          <g
+            key={`${region.properties.id}-island-marker`}
+            tabIndex={0}
+            role="button"
+            aria-label={`${region.properties.name}, island territory`}
+            className={joinClass("territory-marker", isSelected && "selected", isHovered && "hovered")}
+            transform={`translate(${point[0]} ${point[1]})`}
+            onMouseEnter={() => onHoverRegion(region)}
+            onMouseLeave={() => onHoverRegion(null)}
+            onFocus={() => onHoverRegion(region)}
+            onBlur={() => onHoverRegion(null)}
+            onClick={() => onSelectRegion(region)}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelectRegion(region); }}
+          >
+            <circle className="territory-marker-halo" r="8" />
+            <circle className="territory-marker-core" r="3" />
+            <text x="12" y="3.5">{region.properties.name}</text>
+          </g>
         );
       })}
       {projectedCities.map(({ city, point }) => (
