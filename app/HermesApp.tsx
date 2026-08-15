@@ -31,6 +31,11 @@ type AtlasFeature = {
 type Place = { name: string; latitude: number; longitude: number };
 type StatePlace = Place & { code: string };
 type CityPlace = Place & { stateCode: string };
+type AdminRegion = {
+  type: "Feature";
+  properties: { id: string; name: string; type: string; code: string; latitude: number; longitude: number };
+  geometry: unknown;
+};
 type CountryInfo = {
   code: string;
   flag: string;
@@ -73,10 +78,20 @@ function CountryMap({
   country,
   info,
   visitedCities,
+  regions,
+  selectedRegionId,
+  hoveredRegionId,
+  onSelectRegion,
+  onHoverRegion,
 }: {
   country: AtlasFeature;
   info: CountryInfo;
   visitedCities: Set<string>;
+  regions: AdminRegion[];
+  selectedRegionId: string | null;
+  hoveredRegionId: string | null;
+  onSelectRegion: (region: AdminRegion) => void;
+  onHoverRegion: (region: AdminRegion | null) => void;
 }) {
   const projection = useMemo(
     () => geoMercator().fitExtent([[64, 52], [836, 442]], country as never),
@@ -84,9 +99,6 @@ function CountryMap({
   );
   const path = useMemo(() => geoPath(projection), [projection]);
 
-  const projectedStates = info.states
-    .map((state) => ({ state, point: projection([state.longitude, state.latitude]) }))
-    .filter((item): item is { state: StatePlace; point: [number, number] } => Boolean(item.point));
   const projectedCities = info.cities
     .map((city) => ({ city, point: projection([city.longitude, city.latitude]) }))
     .filter((item): item is { city: CityPlace; point: [number, number] } => Boolean(item.point));
@@ -99,12 +111,25 @@ function CountryMap({
         </filter>
       </defs>
       <path className="country-shape" d={path(country as never) ?? ""} filter="url(#map-shadow)" />
-      {projectedStates.map(({ state, point }, index) => (
-        <g key={`${state.code}-${state.name}`} className="state-point" transform={`translate(${point[0]} ${point[1]})`}>
-          <circle r={index < 12 ? 3 : 2} />
-          {index < 10 && <text x="7" y="3">{state.name}</text>}
-        </g>
-      ))}
+      {regions.map((region) => {
+        const isSelected = selectedRegionId === region.properties.id;
+        const isHovered = hoveredRegionId === region.properties.id;
+        return (
+          <path
+            key={region.properties.id}
+            tabIndex={0}
+            aria-label={`${region.properties.name}, ${region.properties.type}`}
+            className={joinClass("state-region", isSelected && "selected", isHovered && "hovered")}
+            d={path(region as never) ?? ""}
+            onMouseEnter={() => onHoverRegion(region)}
+            onMouseLeave={() => onHoverRegion(null)}
+            onFocus={() => onHoverRegion(region)}
+            onBlur={() => onHoverRegion(null)}
+            onClick={() => onSelectRegion(region)}
+            onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelectRegion(region); }}
+          />
+        );
+      })}
       {projectedCities.map(({ city, point }) => (
         <g key={`${city.stateCode}-${city.name}`} className={joinClass("city-point", visitedCities.has(city.name) && "visited")} transform={`translate(${point[0]} ${point[1]})`}>
           <circle r="7" /><circle r="2.5" />
@@ -122,6 +147,10 @@ export default function HermesApp() {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
+  const [regions, setRegions] = useState<AdminRegion[]>([]);
+  const [regionsLoading, setRegionsLoading] = useState(false);
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
+  const [hoveredRegionId, setHoveredRegionId] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "visited">("all");
   const [hydrated, setHydrated] = useState(false);
 
@@ -147,6 +176,24 @@ export default function HermesApp() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities }));
   }, [hydrated, visitedCountries, visitedCities]);
 
+  useEffect(() => {
+    const countryCode = selectedCountry ? countryData[selectedCountry.properties.name]?.code : null;
+    const controller = new AbortController();
+    const resetTimer = window.setTimeout(() => {
+      setRegions([]);
+      setRegionsLoading(Boolean(countryCode));
+      setSelectedRegionId(null);
+      setHoveredRegionId(null);
+    }, 0);
+    if (!countryCode) return () => { window.clearTimeout(resetTimer); controller.abort(); };
+    fetch(`/admin1/${countryCode}.json`, { signal: controller.signal })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("No regional map")))
+      .then((collection: { features?: AdminRegion[] }) => setRegions(collection.features ?? []))
+      .catch((error: Error) => { if (error.name !== "AbortError") setRegions([]); })
+      .finally(() => { if (!controller.signal.aborted) setRegionsLoading(false); });
+    return () => { window.clearTimeout(resetTimer); controller.abort(); };
+  }, [selectedCountry]);
+
   const worldProjection = useMemo(() => geoNaturalEarth1().fitExtent([[25, 24], [975, 476]], { type: "Sphere" } as never), []);
   const worldPath = useMemo(() => geoPath(worldProjection), [worldProjection]);
   const graticule = useMemo(() => geoGraticule10(), []);
@@ -156,6 +203,8 @@ export default function HermesApp() {
     const name = country.properties.name;
     return name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || visitedCountries.has(name));
   });
+  const hoveredCountry = hovered ? countries.find((country) => country.properties.name === hovered) ?? null : null;
+  const hoveredCountryPoint = hoveredCountry ? worldPath.centroid(hoveredCountry as never) : null;
 
   const toggleCountry = (name: string) => {
     setVisitedCountries((current) => {
@@ -184,6 +233,13 @@ export default function HermesApp() {
     const name = selectedCountry.properties.name;
     const info = countryData[name] ?? { code: "", flag: "🌍", currency: "", latitude: 0, longitude: 0, states: [], cities: [] };
     const selectedVisitedCities = new Set(visitedCities[name] ?? []);
+    const selectedRegion = regions.find((region) => region.properties.id === selectedRegionId) ?? null;
+    const hoveredRegion = regions.find((region) => region.properties.id === hoveredRegionId) ?? null;
+    const activeRegion = hoveredRegion ?? selectedRegion;
+    const selectedRegionCities = selectedRegion
+      ? info.cities.filter((city) => city.stateCode === selectedRegion.properties.code)
+      : info.cities;
+    const shownCities = selectedRegion && selectedRegionCities.length ? selectedRegionCities : info.cities;
     return (
       <div className="hermes-app detail-mode">
         <Header onHome={() => setSelectedCountry(null)} />
@@ -204,9 +260,17 @@ export default function HermesApp() {
               <div><span>Currency</span><strong>{info.currency || "—"}</strong></div>
             </div>
             <div className="states-panel">
-              <div className="section-title-row"><span>States & regions</span><small>{info.states.length}</small></div>
+              <div className="section-title-row"><span>States & regions</span><small>{regions.length || info.states.length}</small></div>
               <div className="states-list">
-                {info.states.length ? info.states.map((state) => <span key={`${state.code}-${state.name}`}>{state.name}</span>) : <p>Regional data is being prepared for this territory.</p>}
+                {regions.length ? regions.map((region) => (
+                  <button
+                    key={region.properties.id}
+                    className={selectedRegionId === region.properties.id ? "selected" : ""}
+                    onMouseEnter={() => setHoveredRegionId(region.properties.id)}
+                    onMouseLeave={() => setHoveredRegionId(null)}
+                    onClick={() => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
+                  >{region.properties.name}</button>
+                )) : info.states.length ? info.states.map((state) => <span key={`${state.code}-${state.name}`}>{state.name}</span>) : <p>Regional data is being prepared for this territory.</p>}
               </div>
             </div>
           </aside>
@@ -217,13 +281,30 @@ export default function HermesApp() {
               <div className="legend"><span><i className="city-legend visited" /> Visited</span><span><i className="city-legend" /> To explore</span></div>
             </div>
             <div className="country-map-card">
-              <CountryMap country={selectedCountry} info={info} visitedCities={selectedVisitedCities} />
-              <span className="map-caption"><Compass size={15} /> State markers and featured city pins</span>
+              <CountryMap
+                country={selectedCountry}
+                info={info}
+                visitedCities={selectedVisitedCities}
+                regions={regions}
+                selectedRegionId={selectedRegionId}
+                hoveredRegionId={hoveredRegionId}
+                onHoverRegion={(region) => setHoveredRegionId(region?.properties.id ?? null)}
+                onSelectRegion={(region) => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
+              />
+              {regionsLoading && <div className="map-loading"><span /> Drawing regional boundaries…</div>}
+              {activeRegion && (
+                <div className={joinClass("region-inspector", selectedRegion?.properties.id === activeRegion.properties.id && "pinned")}>
+                  <span className="region-index">{activeRegion.properties.code || "01"}</span>
+                  <div><small>{activeRegion.properties.type}</small><strong>{activeRegion.properties.name}</strong><em>{selectedRegion?.properties.id === activeRegion.properties.id ? "Selected" : "Click to select"}</em></div>
+                  {selectedRegion?.properties.id === activeRegion.properties.id && <Check size={17} />}
+                </div>
+              )}
+              <span className="map-caption"><Compass size={15} /> Hover a region · click to select</span>
             </div>
             <section className="city-section">
-              <div className="section-heading-row"><div><p className="micro-label">CITY LOG</p><h2>Top cities</h2></div><span>{selectedVisitedCities.size} of {info.cities.length} visited</span></div>
+              <div className="section-heading-row"><div><p className="micro-label">CITY LOG</p><h2>{selectedRegion ? selectedRegion.properties.name : "Top cities"}</h2></div><span>{selectedRegion ? <button className="clear-region" onClick={() => setSelectedRegionId(null)}>Show all cities</button> : `${selectedVisitedCities.size} of ${info.cities.length} visited`}</span></div>
               <div className="city-grid">
-                {info.cities.map((city) => {
+                {shownCities.map((city) => {
                   const isVisited = selectedVisitedCities.has(city.name);
                   return (
                     <button key={`${city.stateCode}-${city.name}`} className={joinClass("city-card", isVisited && "visited")} onClick={() => toggleCity(name, city.name)}>
@@ -283,18 +364,26 @@ export default function HermesApp() {
             </div>
           </div>
           <div className="world-map-card">
+            <div className="map-card-title"><Globe2 size={15} /><span>Personal world atlas</span><small>{countries.length} destinations</small></div>
             <div className="map-legend"><span><i className="visited" /> Visited</span><span><i /> Not yet</span></div>
             <svg className="world-map" viewBox="0 0 1000 500" role="img" aria-label="Interactive world map">
-              <path className="ocean-sphere" d={worldPath({ type: "Sphere" } as never) ?? ""} />
+              <defs>
+                <filter id="country-glow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#ed7045" floodOpacity=".48" /></filter>
+                <radialGradient id="ocean-fill" cx="50%" cy="42%" r="68%"><stop offset="0" stopColor="#17425e" stopOpacity=".62" /><stop offset="1" stopColor="#071d32" stopOpacity=".2" /></radialGradient>
+              </defs>
+              <path className="ocean-sphere" fill="url(#ocean-fill)" d={worldPath({ type: "Sphere" } as never) ?? ""} />
               <path className="graticule" d={worldPath(graticule as never) ?? ""} />
               {countries.map((country) => {
                 const name = country.properties.name;
                 const isVisited = visitedCountries.has(name);
                 return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(name)} onBlur={() => setHovered(null)} onClick={() => openCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openCountry(country); }} />;
               })}
+              {hoveredCountry && <path className="active-country-halo" d={worldPath(hoveredCountry as never) ?? ""} />}
+              <g className="continent-labels" aria-hidden="true"><text x="205" y="180">NORTH AMERICA</text><text x="294" y="348">SOUTH AMERICA</text><text x="505" y="156">EUROPE</text><text x="518" y="290">AFRICA</text><text x="704" y="175">ASIA</text><text x="834" y="356">OCEANIA</text></g>
             </svg>
-            {hovered && <div className="country-tooltip"><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
+            {hovered && <div className="country-tooltip" style={hoveredCountryPoint ? { "--tooltip-x": `${hoveredCountryPoint[0] / 10}%`, "--tooltip-y": `${hoveredCountryPoint[1] / 5}%` } as React.CSSProperties : undefined}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
             <div className="map-instruction"><Compass size={16} /><span>Click any country to open its map</span></div>
+            <div className="map-scale"><span /><span /><span /><small>EXPLORE</small></div>
           </div>
         </section>
       </main>

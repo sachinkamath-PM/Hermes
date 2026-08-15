@@ -28,14 +28,18 @@ test("server-renders Hermes product metadata and application shell", async () =>
 });
 
 test("ships the complete atlas data and removes starter preview code", async () => {
-  const [page, app, atlas] = await Promise.all([
+  const [page, app, atlas, indiaRegions] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/HermesApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/country-data.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/admin1/IN.json", import.meta.url), "utf8"),
   ]);
   assert.match(page, /<HermesApp \/>/);
   assert.match(app, /world-atlas\/countries-110m\.json/);
   assert.match(app, /localStorage\.setItem/);
+  assert.match(app, /state-region/);
+  assert.match(app, /onSelectRegion/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);
+  assert.ok(JSON.parse(indiaRegions).features.length >= 30);
   await assert.rejects(access(new URL("../app/_sites-preview", templateRoot)));
 });
