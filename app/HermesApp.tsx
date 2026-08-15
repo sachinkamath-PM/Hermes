@@ -16,7 +16,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { geoEquirectangular, geoGraticule10, geoMercator, geoPath } from "d3-geo";
+import { geoGraticule10, geoMercator, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import world from "world-atlas/countries-110m.json";
 import countryDataJson from "./country-data.json";
@@ -194,7 +194,10 @@ export default function HermesApp() {
     return () => { window.clearTimeout(resetTimer); controller.abort(); };
   }, [selectedCountry]);
 
-  const worldProjection = useMemo(() => geoEquirectangular().fitExtent([[14, 14], [986, 486]], { type: "Sphere" } as never), []);
+  const worldProjection = useMemo(
+    () => geoMercator().fitExtent([[28, 18], [972, 532]], { type: "FeatureCollection", features: countries } as never),
+    [],
+  );
   const worldPath = useMemo(() => geoPath(worldProjection), [worldProjection]);
   const graticule = useMemo(() => geoGraticule10(), []);
   const exploredPercent = Math.round((visitedCountries.size / countries.length) * 100);
@@ -366,12 +369,10 @@ export default function HermesApp() {
           <div className="world-map-card">
             <div className="map-card-title"><Globe2 size={15} /><span>Personal world atlas</span><small>{countries.length} destinations</small></div>
             <div className="map-legend"><span><i className="visited" /> Visited</span><span><i /> Not yet</span></div>
-            <svg className="world-map" viewBox="0 0 1000 500" role="img" aria-label="Interactive world map">
+            <svg className="world-map" viewBox="0 0 1000 550" role="img" aria-label="Interactive world map">
               <defs>
                 <filter id="country-glow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#ed7045" floodOpacity=".48" /></filter>
-                <radialGradient id="ocean-fill" cx="50%" cy="42%" r="68%"><stop offset="0" stopColor="#17425e" stopOpacity=".62" /><stop offset="1" stopColor="#071d32" stopOpacity=".2" /></radialGradient>
               </defs>
-              <path className="ocean-sphere" fill="url(#ocean-fill)" d={worldPath({ type: "Sphere" } as never) ?? ""} />
               <path className="graticule" d={worldPath(graticule as never) ?? ""} />
               {countries.map((country) => {
                 const name = country.properties.name;
@@ -379,9 +380,8 @@ export default function HermesApp() {
                 return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseLeave={() => setHovered(null)} onFocus={() => setHovered(name)} onBlur={() => setHovered(null)} onClick={() => openCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") openCountry(country); }} />;
               })}
               {hoveredCountry && <path className="active-country-halo" d={worldPath(hoveredCountry as never) ?? ""} />}
-              <g className="continent-labels" aria-hidden="true"><text x="205" y="180">NORTH AMERICA</text><text x="294" y="348">SOUTH AMERICA</text><text x="505" y="156">EUROPE</text><text x="518" y="290">AFRICA</text><text x="704" y="175">ASIA</text><text x="834" y="356">OCEANIA</text></g>
             </svg>
-            {hovered && <div className="country-tooltip" style={hoveredCountryPoint ? { "--tooltip-x": `${hoveredCountryPoint[0] / 10}%`, "--tooltip-y": `${hoveredCountryPoint[1] / 5}%` } as React.CSSProperties : undefined}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
+            {hovered && <div className="country-tooltip" style={hoveredCountryPoint ? { "--tooltip-x": `${hoveredCountryPoint[0] / 10}%`, "--tooltip-y": `${hoveredCountryPoint[1] / 5.5}%` } as React.CSSProperties : undefined}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
             <div className="map-instruction"><Compass size={16} /><span>Click any country to open its map</span></div>
             <div className="map-scale"><span /><span /><span /><small>EXPLORE</small></div>
           </div>
