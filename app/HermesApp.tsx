@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Award,
   Check,
   ChevronRight,
   Compass,
@@ -14,6 +15,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Trophy,
   X,
   ZoomIn,
   ZoomOut,
@@ -48,6 +50,7 @@ type CountryInfo = {
   states: StatePlace[];
   cities: CityPlace[];
 };
+type Achievement = { title: string; description: string; icon: string; progress: number; target: number; xp: number };
 
 const atlas = feature(
   world as never,
@@ -80,6 +83,44 @@ function HermesMark() {
     <span className="hermes-mark" aria-hidden="true">
       <i /><b /><em />
     </span>
+  );
+}
+
+function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose }: { achievements: Achievement[]; level: number; rank: string; xp: number; xpIntoLevel: number; onClose: () => void }) {
+  const unlocked = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
+  return (
+    <div className="achievement-backdrop">
+      <section className="achievement-panel" role="dialog" aria-modal="true" aria-labelledby="achievement-title">
+        <button className="achievement-close" onClick={onClose} aria-label="Close achievements"><X size={18} /></button>
+        <div className="achievement-hero">
+          <div className="level-medallion"><span>LVL</span><strong>{level}</strong></div>
+          <div>
+            <p className="micro-label">YOUR EXPLORER PROFILE</p>
+            <h2 id="achievement-title">{rank}</h2>
+            <p>Every country and place moves your journey forward.</p>
+          </div>
+          <div className="xp-total"><Sparkles size={16} /><strong>{xp.toLocaleString()}</strong><span>total XP</span></div>
+        </div>
+        <div className="level-progress-block">
+          <div><strong>Level {level}</strong><span>{xpIntoLevel} / 500 XP</span></div>
+          <div className="level-progress-track"><i style={{ width: `${(xpIntoLevel / 500) * 100}%` }} /></div>
+          <small>{500 - xpIntoLevel} XP until level {level + 1}</small>
+        </div>
+        <div className="achievement-summary"><span><Trophy size={17} /><strong>{unlocked}</strong> unlocked</span><span><Award size={17} /><strong>{achievements.length - unlocked}</strong> in progress</span></div>
+        <div className="achievement-grid">
+          {achievements.map((achievement) => {
+            const isUnlocked = achievement.progress >= achievement.target;
+            const progress = Math.min(100, (achievement.progress / achievement.target) * 100);
+            return <article key={achievement.title} className={joinClass("achievement-card", isUnlocked && "unlocked")}>
+              <div className="achievement-icon">{achievement.icon}</div>
+              <div className="achievement-copy"><small>{isUnlocked ? "UNLOCKED" : `+${achievement.xp} XP`}</small><strong>{achievement.title}</strong><p>{achievement.description}</p></div>
+              {isUnlocked ? <span className="achievement-check"><Check size={15} /></span> : <span className="achievement-count">{Math.min(achievement.progress, achievement.target)}/{achievement.target}</span>}
+              <div className="achievement-card-track"><i style={{ width: `${progress}%` }} /></div>
+            </article>;
+          })}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -296,6 +337,7 @@ export default function HermesApp() {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [manualCityName, setManualCityName] = useState("");
+  const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [hovered, setHovered] = useState<string | null>(null);
   const [regions, setRegions] = useState<AdminRegion[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -364,6 +406,13 @@ export default function HermesApp() {
     if (countryTransitionTimer.current) window.clearTimeout(countryTransitionTimer.current);
   }, []);
 
+  useEffect(() => {
+    if (!achievementsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setAchievementsOpen(false); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [achievementsOpen]);
+
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
     [],
@@ -372,6 +421,20 @@ export default function HermesApp() {
   const graticule = useMemo(() => geoGraticule10(), []);
   const exploredPercent = Math.round((visitedCountries.size / countries.length) * 100);
   const cityTotal = Object.values(visitedCities).reduce((sum, items) => sum + items.length, 0);
+  const explorerXp = visitedCountries.size * 100 + cityTotal * 25;
+  const explorerLevel = Math.floor(explorerXp / 500) + 1;
+  const xpIntoLevel = explorerXp % 500;
+  const explorerRank = explorerLevel >= 8 ? "Atlas Legend" : explorerLevel >= 5 ? "Globe Trotter" : explorerLevel >= 3 ? "Trailblazer" : "Curious Wanderer";
+  const achievements: Achievement[] = [
+    { title: "First Footprint", description: "Mark your first country as visited.", icon: "👣", progress: visitedCountries.size, target: 1, xp: 100 },
+    { title: "Border Crosser", description: "Explore five different countries.", icon: "🧭", progress: visitedCountries.size, target: 5, xp: 250 },
+    { title: "Globe Trotter", description: "Build a map spanning ten countries.", icon: "🌍", progress: visitedCountries.size, target: 10, xp: 500 },
+    { title: "City Collector", description: "Pin ten cities and places to your atlas.", icon: "📍", progress: cityTotal, target: 10, xp: 250 },
+    { title: "Urban Nomad", description: "Remember twenty-five cities and places.", icon: "🏙️", progress: cityTotal, target: 25, xp: 500 },
+    { title: "Atlas Elite", description: "Reach twenty-five countries explored.", icon: "🏆", progress: visitedCountries.size, target: 25, xp: 1000 },
+  ];
+  const unlockedAchievementCount = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
+  const achievementOverlay = achievementsOpen ? <AchievementPanel achievements={achievements} level={explorerLevel} rank={explorerRank} xp={explorerXp} xpIntoLevel={xpIntoLevel} onClose={() => setAchievementsOpen(false)} /> : null;
   const normalizedQuery = query.trim().toLowerCase();
   const placeResults = normalizedQuery ? [
     ...countries
@@ -556,7 +619,7 @@ export default function HermesApp() {
     const remoteRegions = regions.filter((region) => selectedRemoteCodes.has(region.properties.code));
     return (
       <div className="hermes-app detail-mode">
-        <Header onHome={returnToWorld} />
+        <Header onHome={returnToWorld} onAchievements={() => setAchievementsOpen(true)} achievementsActive={achievementsOpen} />
         <main className="country-view">
           <aside className="country-rail">
             <button className="back-button" onClick={returnToWorld}><ArrowLeft size={17} /> Back to world</button>
@@ -656,13 +719,14 @@ export default function HermesApp() {
             </section>
           </section>
         </main>
+        {achievementOverlay}
       </div>
     );
   }
 
   return (
     <div className="hermes-app">
-      <Header />
+      <Header onAchievements={() => setAchievementsOpen(true)} achievementsActive={achievementsOpen} />
       <main className="atlas-layout">
         <aside className="journey-panel">
           <p className="micro-label">YOUR TRAVEL ATLAS</p>
@@ -675,6 +739,11 @@ export default function HermesApp() {
             <div className="progress-copy"><strong>{visitedCountries.size}</strong><span>countries visited</span><small>{countries.length - visitedCountries.size} left to discover</small></div>
           </div>
           <div className="mini-stats"><div><Plane size={17} /><span><strong>{cityTotal}</strong> cities</span></div><div><Globe2 size={17} /><span><strong>5</strong> continents</span></div></div>
+          <button className="explorer-level-card" onClick={() => setAchievementsOpen(true)}>
+            <span className="explorer-level-number">{explorerLevel}</span>
+            <span><small>{explorerRank}</small><strong>{explorerXp.toLocaleString()} XP</strong><i><b style={{ width: `${(xpIntoLevel / 500) * 100}%` }} /></i></span>
+            <em>{unlockedAchievementCount}<Trophy size={13} /></em>
+          </button>
           <div className="recent-section">
             <div className="section-title-row"><span>Recent pins</span><button onClick={() => setFilter(filter === "all" ? "visited" : "all")}>{filter === "all" ? "Visited only" : "Show all"}</button></div>
             <div className="recent-list">
@@ -747,15 +816,16 @@ export default function HermesApp() {
           </div>
         </section>
       </main>
+      {achievementOverlay}
     </div>
   );
 }
 
-function Header({ onHome }: { onHome?: () => void }) {
+function Header({ onHome, onAchievements, achievementsActive = false }: { onHome?: () => void; onAchievements?: () => void; achievementsActive?: boolean }) {
   return (
     <header className="hermes-header">
       <button className="brand-button" onClick={onHome} aria-label="Hermes home"><HermesMark /><span><strong>Hermes</strong><small>by BuildQuick</small></span></button>
-      <nav aria-label="Primary navigation"><button className="active"><Earth size={17} /> World map</button><button><MapPin size={17} /> My places</button><button><Plane size={17} /> Trips</button></nav>
+      <nav aria-label="Primary navigation"><button className={!achievementsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button><Plane size={17} /> Trips</button></nav>
       <div className="header-actions"><button className="menu-button" aria-label="Open menu"><Menu size={19} /></button><span className="profile-avatar">SK</span></div>
     </header>
   );
