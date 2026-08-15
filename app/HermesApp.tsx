@@ -77,6 +77,26 @@ function HermesMark() {
   );
 }
 
+const territoryLayouts: Record<string, { mainLabel: string; insets: Array<{ code: string; label: string }> }> = {
+  US: {
+    mainLabel: "Continental United States",
+    insets: [
+      { code: "AK", label: "Alaska" },
+      { code: "HI", label: "Hawaii" },
+    ],
+  },
+  FR: {
+    mainLabel: "Metropolitan France",
+    insets: [
+      { code: "CY", label: "French Guiana" },
+      { code: "GP", label: "Guadeloupe" },
+      { code: "FF", label: "Martinique" },
+      { code: "RE", label: "Réunion" },
+      { code: "YT", label: "Mayotte" },
+    ],
+  },
+};
+
 function CountryMap({
   country,
   info,
@@ -98,19 +118,31 @@ function CountryMap({
   onHoverRegion: (region: AdminRegion | null) => void;
   onToggleCity: (city: string) => void;
 }) {
+  const territoryLayout = territoryLayouts[info.code];
+  const remoteCodes = useMemo(
+    () => new Set(territoryLayout?.insets.map((inset) => inset.code) ?? []),
+    [territoryLayout],
+  );
+  const primaryRegions = useMemo(
+    () => regions.filter((region) => !remoteCodes.has(region.properties.code)),
+    [regions, remoteCodes],
+  );
   const mapGeometry = useMemo(
-    () => regions.length
-      ? { type: "FeatureCollection", features: [country, ...regions] }
+    () => primaryRegions.length
+      ? { type: "FeatureCollection", features: primaryRegions }
       : country,
-    [country, regions],
+    [country, primaryRegions],
   );
   const projection = useMemo(
-    () => geoMercator().fitExtent([[52, 42], [848, 452]], mapGeometry as never),
-    [mapGeometry],
+    () => geoMercator().fitExtent(
+      territoryLayout ? [[42, 54], [625, 452]] : [[52, 42], [848, 452]],
+      mapGeometry as never,
+    ),
+    [mapGeometry, territoryLayout],
   );
   const path = useMemo(() => geoPath(projection), [projection]);
   const selectedRegion = regions.find((region) => region.properties.id === selectedRegionId) ?? null;
-  const islandTerritories = useMemo(() => regions.flatMap((region) => {
+  const islandTerritories = useMemo(() => primaryRegions.flatMap((region) => {
     if ((region.geometry as { type?: string }).type !== "MultiPolygon") return [];
     if (!/(island|archipelago|atoll|lakshadweep)/i.test(region.properties.name)) return [];
     const [[x0, y0], [x1, y1]] = path.bounds(region as never);
@@ -121,17 +153,37 @@ function CountryMap({
     const point = path.centroid(region as never);
     if (boundsArea < 50 || coverage > 0.16 || !point.every(Number.isFinite)) return [];
     return [{ region, point: point as [number, number] }];
-  }), [path, regions]);
+  }), [path, primaryRegions]);
+  const insetMaps = useMemo(() => {
+    if (!territoryLayout) return [];
+    const compact = territoryLayout.insets.length > 2;
+    return territoryLayout.insets.flatMap((inset, index) => {
+      const region = regions.find((candidate) => candidate.properties.code === inset.code);
+      if (!region) return [];
+      const width = compact ? 108 : 198;
+      const height = compact ? 112 : 164;
+      const x = compact ? 650 + (index % 2) * 120 : 678;
+      const y = compact ? 48 + Math.floor(index / 2) * 130 : 72 + index * 188;
+      const insetProjection = geoMercator().fitExtent(
+        [[x + 12, y + 28], [x + width - 12, y + height - 12]],
+        region as never,
+      );
+      return [{ ...inset, region, x, y, width, height, projection: insetProjection, path: geoPath(insetProjection) }];
+    });
+  }, [regions, territoryLayout]);
   const mapTransform = useMemo(() => {
-    if (!selectedRegion) return { x: 0, y: 0, k: 1 };
+    if (!selectedRegion || remoteCodes.has(selectedRegion.properties.code)) return { x: 0, y: 0, k: 1 };
     const [[x0, y0], [x1, y1]] = path.bounds(selectedRegion as never);
     const width = Math.max(x1 - x0, 1);
     const height = Math.max(y1 - y0, 1);
-    const k = Math.min(2.35, Math.max(1, 0.76 / Math.max(width / 900, height / 500)));
-    return { x: 450 - k * ((x0 + x1) / 2), y: 250 - k * ((y0 + y1) / 2), k };
-  }, [path, selectedRegion]);
+    const mapWidth = territoryLayout ? 640 : 900;
+    const centerX = territoryLayout ? 322 : 450;
+    const k = Math.min(2.35, Math.max(1, 0.76 / Math.max(width / mapWidth, height / 500)));
+    return { x: centerX - k * ((x0 + x1) / 2), y: 250 - k * ((y0 + y1) / 2), k };
+  }, [path, remoteCodes, selectedRegion, territoryLayout]);
 
   const projectedCities = info.cities
+    .filter((city) => !remoteCodes.has(city.stateCode))
     .map((city) => ({ city, point: projection([city.longitude, city.latitude]) }))
     .filter((item): item is { city: CityPlace; point: [number, number] } => Boolean(item.point));
 
@@ -142,9 +194,10 @@ function CountryMap({
           <feDropShadow dx="0" dy="12" stdDeviation="12" floodColor="#062238" floodOpacity=".18" />
         </filter>
       </defs>
+      {territoryLayout && regions.length > 0 && <text className="main-map-label" x="42" y="32">{territoryLayout.mainLabel}</text>}
       <g className="country-map-layer" style={{ transform: `translate(${mapTransform.x}px, ${mapTransform.y}px) scale(${mapTransform.k})` }}>
-      <path className="country-shape" d={path(country as never) ?? ""} filter="url(#map-shadow)" />
-      {regions.map((region) => {
+      <path className="country-shape" d={path(mapGeometry as never) ?? ""} filter="url(#map-shadow)" />
+      {primaryRegions.map((region) => {
         const isSelected = selectedRegionId === region.properties.id;
         const isHovered = hoveredRegionId === region.properties.id;
         const isExplored = info.cities.some((city) => city.stateCode === region.properties.code && visitedCities.has(city.name));
@@ -195,6 +248,40 @@ function CountryMap({
         </g>
       ))}
       </g>
+      {insetMaps.map((inset) => {
+        const isSelected = selectedRegionId === inset.region.properties.id;
+        const isHovered = hoveredRegionId === inset.region.properties.id;
+        const isExplored = info.cities.some((city) => city.stateCode === inset.code && visitedCities.has(city.name));
+        const insetCities = info.cities
+          .filter((city) => city.stateCode === inset.code)
+          .map((city) => ({ city, point: inset.projection([city.longitude, city.latitude]) }))
+          .filter((item): item is { city: CityPlace; point: [number, number] } => Boolean(item.point));
+        return (
+          <g key={`${inset.code}-inset`} className={joinClass("territory-inset", isSelected && "selected", isHovered && "hovered")}>
+            <rect className="territory-inset-frame" x={inset.x} y={inset.y} width={inset.width} height={inset.height} rx="10" />
+            <text className="territory-inset-label" x={inset.x + 11} y={inset.y + 17}>{inset.label}</text>
+            <path
+              tabIndex={0}
+              aria-label={`${inset.region.properties.name}, ${inset.region.properties.type}`}
+              className={joinClass("state-region inset-region", isSelected && "selected", isHovered && "hovered", isExplored && "explored")}
+              d={inset.path(inset.region as never) ?? ""}
+              onMouseEnter={() => onHoverRegion(inset.region)}
+              onMouseLeave={() => onHoverRegion(null)}
+              onFocus={() => onHoverRegion(inset.region)}
+              onBlur={() => onHoverRegion(null)}
+              onClick={() => onSelectRegion(inset.region)}
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onSelectRegion(inset.region); }}
+            />
+            {insetCities.map(({ city, point }) => (
+              <g key={`${inset.code}-${city.name}`} tabIndex={0} role="button" aria-label={`${city.name}${visitedCities.has(city.name) ? ", visited" : ", mark as visited"}`} className={joinClass("city-point inset-city", visitedCities.has(city.name) && "visited", isSelected && "in-focus")} transform={`translate(${point[0]} ${point[1]})`} onClick={(event) => { event.stopPropagation(); onToggleCity(city.name); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onToggleCity(city.name); }}>
+                <circle r="6" /><circle r="2" />
+                <text x="9" y="3">{city.name}</text>
+              </g>
+            ))}
+          </g>
+        );
+      })}
+      {territoryLayout && regions.length > 0 && <text className="cartography-note" x="876" y="486">Geographic insets · scales vary</text>}
     </svg>
   );
 }
@@ -392,7 +479,11 @@ export default function HermesApp() {
     const selectedRegionCities = selectedRegion
       ? info.cities.filter((city) => city.stateCode === selectedRegion.properties.code)
       : info.cities;
-    const shownCities = selectedRegion && selectedRegionCities.length ? selectedRegionCities : info.cities;
+    const shownCities = selectedRegion ? selectedRegionCities : info.cities;
+    const selectedTerritoryLayout = territoryLayouts[info.code];
+    const selectedRemoteCodes = new Set(selectedTerritoryLayout?.insets.map((inset) => inset.code) ?? []);
+    const mainRegions = regions.filter((region) => !selectedRemoteCodes.has(region.properties.code));
+    const remoteRegions = regions.filter((region) => selectedRemoteCodes.has(region.properties.code));
     return (
       <div className="hermes-app detail-mode">
         <Header onHome={returnToWorld} />
@@ -415,15 +506,27 @@ export default function HermesApp() {
             <div className="states-panel">
               <div className="section-title-row"><span>States & regions</span><small>{regions.length || info.states.length}</small></div>
               <div className="states-list">
-                {regions.length ? regions.map((region) => (
-                  <button
-                    key={region.properties.id}
-                    className={selectedRegionId === region.properties.id ? "selected" : ""}
-                    onMouseEnter={() => setHoveredRegionId(region.properties.id)}
-                    onMouseLeave={() => setHoveredRegionId(null)}
-                    onClick={() => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
-                  >{region.properties.name}</button>
-                )) : info.states.length ? info.states.map((state) => <span key={`${state.code}-${state.name}`}>{state.name}</span>) : <p>Regional data is being prepared for this territory.</p>}
+                {regions.length ? <>
+                  {mainRegions.map((region) => (
+                    <button
+                      key={region.properties.id}
+                      className={selectedRegionId === region.properties.id ? "selected" : ""}
+                      onMouseEnter={() => setHoveredRegionId(region.properties.id)}
+                      onMouseLeave={() => setHoveredRegionId(null)}
+                      onClick={() => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
+                    >{region.properties.name}</button>
+                  ))}
+                  {remoteRegions.length > 0 && <span className="territory-list-heading">Remote territories</span>}
+                  {remoteRegions.map((region) => (
+                    <button
+                      key={region.properties.id}
+                      className={joinClass("territory-list-item", selectedRegionId === region.properties.id && "selected")}
+                      onMouseEnter={() => setHoveredRegionId(region.properties.id)}
+                      onMouseLeave={() => setHoveredRegionId(null)}
+                      onClick={() => setSelectedRegionId(selectedRegionId === region.properties.id ? null : region.properties.id)}
+                    >{region.properties.name}</button>
+                  ))}
+                </> : info.states.length ? info.states.map((state) => <span key={`${state.code}-${state.name}`}>{state.name}</span>) : <p>Regional data is being prepared for this territory.</p>}
               </div>
             </div>
           </aside>
@@ -469,6 +572,7 @@ export default function HermesApp() {
                     </button>
                   );
                 })}
+                {selectedRegion && shownCities.length === 0 && <div className="empty-city-state"><MapPin size={19} /><strong>No featured cities yet</strong><span>The territory remains fully selectable on your travel map.</span></div>}
               </div>
             </section>
           </section>

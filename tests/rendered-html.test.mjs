@@ -28,11 +28,13 @@ test("server-renders Hermes product metadata and application shell", async () =>
 });
 
 test("ships the complete atlas data and removes starter preview code", async () => {
-  const [page, app, atlas, indiaRegions] = await Promise.all([
+  const [page, app, atlas, indiaRegions, usRegions, franceRegions] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/HermesApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/country-data.json", import.meta.url), "utf8"),
     readFile(new URL("../public/admin1/IN.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/admin1/US.json", import.meta.url), "utf8"),
+    readFile(new URL("../public/admin1/FR.json", import.meta.url), "utf8"),
   ]);
   assert.match(page, /<HermesApp \/>/);
   assert.match(app, /world-atlas\/countries-110m\.json/);
@@ -41,10 +43,20 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /onSelectRegion/);
   assert.match(app, /FeatureCollection/);
   assert.match(app, /territory-marker/);
+  assert.match(app, /Continental United States/);
+  assert.match(app, /Metropolitan France/);
+  assert.match(app, /Geographic insets/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);
   const indiaFeatures = JSON.parse(indiaRegions).features;
   assert.ok(indiaFeatures.length >= 30);
   assert.ok(indiaFeatures.some((region) => region.properties.name === "Lakshadweep"));
   assert.ok(indiaFeatures.some((region) => region.properties.name === "Andaman and Nicobar Islands"));
+  const usFeatures = JSON.parse(usRegions).features;
+  assert.ok(usFeatures.some((region) => region.properties.code === "AK"));
+  assert.ok(usFeatures.some((region) => region.properties.code === "HI"));
+  const franceFeatures = JSON.parse(franceRegions).features;
+  for (const code of ["CY", "GP", "FF", "RE", "YT"]) {
+    assert.ok(franceFeatures.some((region) => region.properties.code === code));
+  }
   await assert.rejects(access(new URL("../app/_sites-preview", templateRoot)));
 });
