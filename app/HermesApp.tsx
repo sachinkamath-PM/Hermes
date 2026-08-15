@@ -89,7 +89,7 @@ const initialCities: Record<string, string[]> = {
   "United States of America": ["New York City", "San Francisco"],
 };
 
-function joinClass(...classes: Array<string | false | undefined>) {
+function joinClass(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
@@ -205,7 +205,8 @@ function TripPanel({ trips, defaultCountry, onCreate, onUpdate, onDelete, onComp
   const [title, setTitle] = useState(""); const [startDate, setStartDate] = useState(""); const [endDate, setEndDate] = useState(""); const [budget, setBudget] = useState(""); const [travellers, setTravellers] = useState(1);
   const [routeCountry, setRouteCountry] = useState(defaultCountry); const [routePlace, setRoutePlace] = useState(""); const [routeDraft, setRouteDraft] = useState<TripDestination[]>([]);
   const [planDate, setPlanDate] = useState(""); const [planTime, setPlanTime] = useState(""); const [planTitle, setPlanTitle] = useState(""); const [checkText, setCheckText] = useState("");
-  const activeTrip = trips.find((trip) => trip.id === activeId) ?? null;
+  const selectedTrip = trips.find((trip) => trip.id === activeId) ?? null;
+  const activeTrip = selectedTrip ? { ...selectedTrip, itinerary: [...selectedTrip.itinerary] } : null;
   const [openedAt] = useState(currentTimestamp);
   const addRouteStop = () => { if (!routePlace.trim()) return; setRouteDraft((current) => [...current, { id: createLocalId(), country: routeCountry, place: routePlace.trim() }]); setRoutePlace(""); };
   const createTrip = (event: React.FormEvent) => {
@@ -955,11 +956,17 @@ export default function HermesApp() {
 }
 
 function Header({ onHome, onAchievements, onJournal, onTrips, achievementsActive = false, journalActive = false, tripsActive = false }: { onHome?: () => void; onAchievements?: () => void; onJournal?: () => void; onTrips?: () => void; achievementsActive?: boolean; journalActive?: boolean; tripsActive?: boolean }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const navigate = (handler?: () => void) => {
+    handler?.();
+    setMenuOpen(false);
+  };
   return (
     <header className="hermes-header">
       <button className="brand-button" onClick={onHome} aria-label="Hermes home"><HermesMark /><span><strong>Hermes</strong><small>by BuildQuick</small></span></button>
       <nav aria-label="Primary navigation"><button className={!achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={onTrips}><Plane size={17} /> Trips</button></nav>
-      <div className="header-actions"><button className="menu-button" aria-label="Open menu"><Menu size={19} /></button><span className="profile-avatar">SK</span></div>
+      <div className="header-actions"><button className="menu-button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="hermes-menu" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button><span className="profile-avatar">SK</span></div>
+      {menuOpen && <nav className="mobile-menu" id="hermes-menu" aria-label="Hermes menu"><button className={!achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={() => navigate(onHome)}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={() => navigate(onJournal)}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={() => navigate(onAchievements)}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={() => navigate(onTrips)}><Plane size={17} /> Trips</button></nav>}
     </header>
   );
 }
