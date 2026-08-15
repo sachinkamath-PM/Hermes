@@ -55,6 +55,10 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /Atlas Elite/);
   assert.match(app, /AchievementPanel/);
   assert.match(app, /explorerXp/);
+  assert.match(app, /Travel journal/);
+  assert.match(app, /Add a memory/);
+  assert.match(app, /JournalEntry/);
+  assert.match(app, /journalEntries/);
   assert.match(app, /const addPlace/);
   assert.match(app, /new Set\(current\)\.add\(countryName\)/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);

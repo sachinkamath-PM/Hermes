@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Award,
+  BookOpen,
   Check,
   ChevronRight,
   Compass,
@@ -15,6 +16,8 @@ import {
   Plus,
   Search,
   Sparkles,
+  Star,
+  Trash2,
   Trophy,
   X,
   ZoomIn,
@@ -51,6 +54,8 @@ type CountryInfo = {
   cities: CityPlace[];
 };
 type Achievement = { title: string; description: string; icon: string; progress: number; target: number; xp: number };
+type JournalStatus = "visited" | "planned" | "dreaming";
+type JournalEntry = { id: string; country: string; place: string; date: string; status: JournalStatus; rating: number; note: string; createdAt: number };
 
 const atlas = feature(
   world as never,
@@ -58,6 +63,7 @@ const atlas = feature(
 ) as unknown as { features: AtlasFeature[] };
 
 const countries = atlas.features.filter((country) => country.properties.name !== "Antarctica");
+const countryNames = countries.map((country) => country.properties.name).sort((a, b) => a.localeCompare(b));
 const countryData = countryDataJson as Record<string, CountryInfo>;
 const citySearchIndex = Object.entries(countryData).flatMap(([countryName, info]) =>
   info.cities.map((city) => ({ countryName, city })),
@@ -118,6 +124,63 @@ function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose 
               <div className="achievement-card-track"><i style={{ width: `${progress}%` }} /></div>
             </article>;
           })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { entries: JournalEntry[]; defaultCountry: string; onSave: (entry: Omit<JournalEntry, "id" | "createdAt">) => void; onDelete: (id: string) => void; onClose: () => void }) {
+  const [status, setStatus] = useState<JournalStatus>("visited");
+  const [country, setCountry] = useState(defaultCountry);
+  const [place, setPlace] = useState("");
+  const [date, setDate] = useState("");
+  const [rating, setRating] = useState(0);
+  const [note, setNote] = useState("");
+  const [filter, setFilter] = useState<"all" | JournalStatus>("all");
+  const visibleEntries = entries
+    .filter((entry) => filter === "all" || entry.status === filter)
+    .sort((a, b) => (b.date || "0000").localeCompare(a.date || "0000") || b.createdAt - a.createdAt);
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!country || !place.trim()) return;
+    onSave({ country, place: place.trim(), date, status, rating, note: note.trim() });
+    setPlace(""); setDate(""); setRating(0); setNote("");
+  };
+  return (
+    <div className="journal-backdrop">
+      <section className="journal-panel" role="dialog" aria-modal="true" aria-labelledby="journal-title">
+        <button className="journal-close" onClick={onClose} aria-label="Close travel journal"><X size={18} /></button>
+        <header className="journal-header">
+          <span className="journal-mark"><BookOpen size={25} /></span>
+          <div><p className="micro-label">YOUR TRAVEL STORY</p><h2 id="journal-title">Travel journal</h2><p>Keep the details that a map alone cannot remember.</p></div>
+          <div className="journal-count"><strong>{entries.length}</strong><span>{entries.length === 1 ? "entry" : "entries"}</span></div>
+        </header>
+        <div className="journal-layout">
+          <form className="memory-form" onSubmit={submit}>
+            <div className="memory-form-heading"><div><small>NEW ENTRY</small><h3>Add a memory</h3></div><Sparkles size={18} /></div>
+            <label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value as JournalStatus)}><option value="visited">Visited</option><option value="planned">Planned</option><option value="dreaming">Dreaming</option></select></label>
+            <label><span>Country</span><select value={country} onChange={(event) => setCountry(event.target.value)}>{countryNames.map((name) => <option key={name}>{name}</option>)}</select></label>
+            <label><span>City or place</span><input value={place} onChange={(event) => setPlace(event.target.value)} placeholder="e.g. Ubud, Bali" required /></label>
+            <label><span>{status === "visited" ? "Date visited" : "Target date"}</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+            <fieldset><legend>Rating</legend><div className="rating-picker">{[1,2,3,4,5].map((value) => <button key={value} type="button" className={rating >= value ? "selected" : ""} onClick={() => setRating(rating === value ? 0 : value)} aria-label={`${value} star rating`}><Star size={18} fill={rating >= value ? "currentColor" : "none"} /></button>)}</div></fieldset>
+            <label><span>Memory or note</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="What made this place memorable?" rows={4} /></label>
+            <button className="save-memory" type="submit" disabled={!place.trim()}><BookOpen size={16} /> Save to journal</button>
+            <p className="memory-save-note">Saved privately on this device.</p>
+          </form>
+          <div className="timeline-column">
+            <div className="timeline-toolbar"><div><small>JOURNEY TIMELINE</small><h3>Your places, in order</h3></div><div>{(["all","visited","planned","dreaming"] as const).map((value) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{value}</button>)}</div></div>
+            {visibleEntries.length ? <div className="journal-timeline">{visibleEntries.map((entry) => <article key={entry.id} className={`timeline-entry ${entry.status}`}>
+              <span className="timeline-dot"><MapPin size={15} /></span>
+              <div className="timeline-card">
+                <div className="timeline-meta"><span>{entry.status}</span><time>{entry.date ? new Date(`${entry.date}T00:00:00`).toLocaleDateString(undefined,{day:"numeric",month:"short",year:"numeric"}) : "Date open"}</time></div>
+                <h4>{entry.place}</h4><p className="timeline-country">{countryData[entry.country]?.flag ?? "🌍"} {entry.country}</p>
+                {entry.rating > 0 && <div className="timeline-rating">{Array.from({length:entry.rating},(_,index) => <Star key={index} size={12} fill="currentColor" />)}</div>}
+                {entry.note && <p className="timeline-note">“{entry.note}”</p>}
+                <button className="delete-memory" onClick={() => onDelete(entry.id)} aria-label={`Delete ${entry.place} journal entry`}><Trash2 size={14} /></button>
+              </div>
+            </article>)}</div> : <div className="journal-empty"><span>✈️</span><strong>{entries.length ? "No entries in this view" : "Your story starts with one place"}</strong><p>{entries.length ? "Choose another status to see more of your journey." : "Add a memory, a future plan, or somewhere you dream of visiting."}</p></div>}
+          </div>
         </div>
       </section>
     </div>
@@ -338,6 +401,8 @@ export default function HermesApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [manualCityName, setManualCityName] = useState("");
   const [achievementsOpen, setAchievementsOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [regions, setRegions] = useState<AdminRegion[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -359,9 +424,10 @@ export default function HermesApp() {
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]> };
+          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]>; journal?: JournalEntry[] };
           if (Array.isArray(parsed.countries)) setVisitedCountries(new Set(parsed.countries));
           if (parsed.cities && typeof parsed.cities === "object") setVisitedCities(parsed.cities);
+          if (Array.isArray(parsed.journal)) setJournalEntries(parsed.journal);
         }
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -373,8 +439,8 @@ export default function HermesApp() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities }));
-  }, [hydrated, visitedCountries, visitedCities]);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities, journal: journalEntries }));
+  }, [hydrated, visitedCountries, visitedCities, journalEntries]);
 
   useEffect(() => {
     const countryCode = selectedCountry ? countryData[selectedCountry.properties.name]?.code : null;
@@ -407,11 +473,11 @@ export default function HermesApp() {
   }, []);
 
   useEffect(() => {
-    if (!achievementsOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setAchievementsOpen(false); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [achievementsOpen]);
+    if (!achievementsOpen && !journalOpen) return;
+    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setAchievementsOpen(false); setJournalOpen(false); } };
+    window.addEventListener("keydown", closePanels);
+    return () => window.removeEventListener("keydown", closePanels);
+  }, [achievementsOpen, journalOpen]);
 
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
@@ -435,6 +501,18 @@ export default function HermesApp() {
   ];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
   const achievementOverlay = achievementsOpen ? <AchievementPanel achievements={achievements} level={explorerLevel} rank={explorerRank} xp={explorerXp} xpIntoLevel={xpIntoLevel} onClose={() => setAchievementsOpen(false)} /> : null;
+  const saveJournalEntry = (entry: Omit<JournalEntry, "id" | "createdAt">) => {
+    const nextEntry: JournalEntry = { ...entry, id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}`, createdAt: Date.now() };
+    setJournalEntries((current) => [nextEntry, ...current]);
+    if (entry.status === "visited") {
+      setVisitedCountries((current) => new Set(current).add(entry.country));
+      setVisitedCities((current) => {
+        const next = new Set(current[entry.country] ?? []); next.add(entry.place);
+        return { ...current, [entry.country]: [...next] };
+      });
+    }
+  };
+  const journalOverlay = journalOpen ? <JournalPanel entries={journalEntries} defaultCountry={selectedCountry?.properties.name ?? [...visitedCountries][0] ?? countryNames[0]} onSave={saveJournalEntry} onDelete={(id) => setJournalEntries((current) => current.filter((entry) => entry.id !== id))} onClose={() => setJournalOpen(false)} /> : null;
   const normalizedQuery = query.trim().toLowerCase();
   const placeResults = normalizedQuery ? [
     ...countries
@@ -619,7 +697,7 @@ export default function HermesApp() {
     const remoteRegions = regions.filter((region) => selectedRemoteCodes.has(region.properties.code));
     return (
       <div className="hermes-app detail-mode">
-        <Header onHome={returnToWorld} onAchievements={() => setAchievementsOpen(true)} achievementsActive={achievementsOpen} />
+        <Header onHome={returnToWorld} onAchievements={() => { setJournalOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setJournalOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} />
         <main className="country-view">
           <aside className="country-rail">
             <button className="back-button" onClick={returnToWorld}><ArrowLeft size={17} /> Back to world</button>
@@ -667,7 +745,7 @@ export default function HermesApp() {
           <section className="country-content">
             <div className="country-heading">
               <div><p className="micro-label">EXPLORE {info.code || "THE MAP"}</p><h2>Where have you been?</h2><p>Select cities as you retrace your journey through {name}.</p></div>
-              <div className="legend"><span><i className="city-legend visited" /> Visited</span><span><i className="city-legend" /> To explore</span></div>
+              <div className="country-heading-actions"><button className="add-memory-button" onClick={() => setJournalOpen(true)}><BookOpen size={15} /> Add memory</button><div className="legend"><span><i className="city-legend visited" /> Visited</span><span><i className="city-legend" /> To explore</span></div></div>
             </div>
             <div className="country-map-card">
               <CountryMap
@@ -720,13 +798,14 @@ export default function HermesApp() {
           </section>
         </main>
         {achievementOverlay}
+        {journalOverlay}
       </div>
     );
   }
 
   return (
     <div className="hermes-app">
-      <Header onAchievements={() => setAchievementsOpen(true)} achievementsActive={achievementsOpen} />
+      <Header onAchievements={() => { setJournalOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setJournalOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} />
       <main className="atlas-layout">
         <aside className="journey-panel">
           <p className="micro-label">YOUR TRAVEL ATLAS</p>
@@ -744,6 +823,7 @@ export default function HermesApp() {
             <span><small>{explorerRank}</small><strong>{explorerXp.toLocaleString()} XP</strong><i><b style={{ width: `${(xpIntoLevel / 500) * 100}%` }} /></i></span>
             <em>{unlockedAchievementCount}<Trophy size={13} /></em>
           </button>
+          <button className="journal-quick-card" onClick={() => setJournalOpen(true)}><span><BookOpen size={18} /></span><span><small>TRAVEL JOURNAL</small><strong>{journalEntries.length ? `${journalEntries.length} memories & plans` : "Start your timeline"}</strong></span><ChevronRight size={16} /></button>
           <div className="recent-section">
             <div className="section-title-row"><span>Recent pins</span><button onClick={() => setFilter(filter === "all" ? "visited" : "all")}>{filter === "all" ? "Visited only" : "Show all"}</button></div>
             <div className="recent-list">
@@ -817,15 +897,16 @@ export default function HermesApp() {
         </section>
       </main>
       {achievementOverlay}
+      {journalOverlay}
     </div>
   );
 }
 
-function Header({ onHome, onAchievements, achievementsActive = false }: { onHome?: () => void; onAchievements?: () => void; achievementsActive?: boolean }) {
+function Header({ onHome, onAchievements, onJournal, achievementsActive = false, journalActive = false }: { onHome?: () => void; onAchievements?: () => void; onJournal?: () => void; achievementsActive?: boolean; journalActive?: boolean }) {
   return (
     <header className="hermes-header">
       <button className="brand-button" onClick={onHome} aria-label="Hermes home"><HermesMark /><span><strong>Hermes</strong><small>by BuildQuick</small></span></button>
-      <nav aria-label="Primary navigation"><button className={!achievementsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button><Plane size={17} /> Trips</button></nav>
+      <nav aria-label="Primary navigation"><button className={!achievementsActive && !journalActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button><Plane size={17} /> Trips</button></nav>
       <div className="header-actions"><button className="menu-button" aria-label="Open menu"><Menu size={19} /></button><span className="profile-avatar">SK</span></div>
     </header>
   );
