@@ -16,7 +16,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { geoGraticule10, geoMercator, geoNaturalEarth1, geoPath } from "d3-geo";
+import { geoEquirectangular, geoGraticule10, geoMercator, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import world from "world-atlas/countries-110m.json";
 import countryDataJson from "./country-data.json";
@@ -194,7 +194,7 @@ export default function HermesApp() {
     return () => { window.clearTimeout(resetTimer); controller.abort(); };
   }, [selectedCountry]);
 
-  const worldProjection = useMemo(() => geoNaturalEarth1().fitExtent([[25, 24], [975, 476]], { type: "Sphere" } as never), []);
+  const worldProjection = useMemo(() => geoEquirectangular().fitExtent([[14, 14], [986, 486]], { type: "Sphere" } as never), []);
   const worldPath = useMemo(() => geoPath(worldProjection), [worldProjection]);
   const graticule = useMemo(() => geoGraticule10(), []);
   const exploredPercent = Math.round((visitedCountries.size / countries.length) * 100);
