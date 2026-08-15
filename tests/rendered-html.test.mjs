@@ -48,6 +48,9 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /Geographic insets/);
   assert.match(app, /state-selection-outline/);
   assert.doesNotMatch(app, /country-glow|map-shadow/);
+  assert.match(app, /Search countries or cities/);
+  assert.match(app, /const addPlace/);
+  assert.match(app, /new Set\(current\)\.add\(countryName\)/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);
   const indiaFeatures = JSON.parse(indiaRegions).features;
   assert.ok(indiaFeatures.length >= 30);

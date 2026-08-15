@@ -56,6 +56,9 @@ const atlas = feature(
 
 const countries = atlas.features.filter((country) => country.properties.name !== "Antarctica");
 const countryData = countryDataJson as Record<string, CountryInfo>;
+const citySearchIndex = Object.entries(countryData).flatMap(([countryName, info]) =>
+  info.cities.map((city) => ({ countryName, city })),
+);
 const STORAGE_KEY = "hermes_travel_atlas_v1";
 const initialVisited = ["India", "France", "Japan", "United States of America"];
 const initialCities: Record<string, string[]> = {
@@ -356,10 +359,21 @@ export default function HermesApp() {
   const graticule = useMemo(() => geoGraticule10(), []);
   const exploredPercent = Math.round((visitedCountries.size / countries.length) * 100);
   const cityTotal = Object.values(visitedCities).reduce((sum, items) => sum + items.length, 0);
-  const filteredCountries = countries.filter((country) => {
-    const name = country.properties.name;
-    return name.toLowerCase().includes(query.toLowerCase()) && (filter === "all" || visitedCountries.has(name));
-  });
+  const normalizedQuery = query.trim().toLowerCase();
+  const placeResults = normalizedQuery ? [
+    ...countries
+      .filter((country) => country.properties.name.toLowerCase().includes(normalizedQuery))
+      .map((country) => ({ kind: "country" as const, country })),
+    ...citySearchIndex
+      .filter(({ city, countryName }) => city.name.toLowerCase().includes(normalizedQuery) || `${city.name} ${countryName}`.toLowerCase().includes(normalizedQuery))
+      .map((place) => ({ kind: "city" as const, ...place })),
+  ].sort((a, b) => {
+    const aName = a.kind === "country" ? a.country.properties.name : a.city.name;
+    const bName = b.kind === "country" ? b.country.properties.name : b.city.name;
+    const aStarts = aName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+    const bStarts = bName.toLowerCase().startsWith(normalizedQuery) ? 0 : 1;
+    return aStarts - bStarts || aName.localeCompare(bName);
+  }).slice(0, 8) : [];
   const hoveredCountry = hovered ? countries.find((country) => country.properties.name === hovered) ?? null : null;
   const transitioningCountryFeature = transitioningCountry
     ? countries.find((country) => country.properties.name === transitioningCountry) ?? null
@@ -375,11 +389,15 @@ export default function HermesApp() {
   };
 
   const toggleCity = (country: string, city: string) => {
+    const isAdding = !(visitedCities[country] ?? []).includes(city);
     setVisitedCities((current) => {
       const next = new Set(current[country] ?? []);
       if (next.has(city)) next.delete(city); else next.add(city);
       return { ...current, [country]: [...next] };
     });
+    if (isAdding) {
+      setVisitedCountries((current) => new Set(current).add(country));
+    }
   };
 
   const openCountry = (country: AtlasFeature) => {
@@ -387,6 +405,18 @@ export default function HermesApp() {
     setSearchOpen(false);
     setQuery("");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const addPlace = (countryName: string, cityName: string) => {
+    const country = countries.find((candidate) => candidate.properties.name === countryName);
+    if (!country) return;
+    setVisitedCountries((current) => new Set(current).add(countryName));
+    setVisitedCities((current) => {
+      const next = new Set(current[countryName] ?? []);
+      next.add(cityName);
+      return { ...current, [countryName]: [...next] };
+    });
+    openCountry(country);
   };
 
   const resetWorldView = () => setWorldTransform({ x: 0, y: 0, k: 1 });
@@ -615,11 +645,23 @@ export default function HermesApp() {
             <div><p className="micro-label">INTERACTIVE WORLD MAP</p><h2>Choose a country</h2></div>
             <div className="search-wrap">
               <Search size={18} />
-              <input value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} placeholder="Search 176 countries" aria-label="Search countries" />
+              <input value={query} onFocus={() => setSearchOpen(true)} onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }} placeholder="Search countries or cities" aria-label="Add a country or city" />
               {query && <button aria-label="Clear search" onClick={() => setQuery("")}><X size={16} /></button>}
               {searchOpen && query && <div className="search-results">
-                {filteredCountries.slice(0, 8).map((country) => <button key={country.id} onClick={() => openCountry(country)}><span>{countryData[country.properties.name]?.flag ?? "🌍"}</span><span>{country.properties.name}</span>{visitedCountries.has(country.properties.name) && <Check size={15} />}</button>)}
-                {!filteredCountries.length && <p>No country found.</p>}
+                {placeResults.map((result) => result.kind === "country" ? (
+                  <button key={`country-${result.country.id}`} onClick={() => openCountry(result.country)}>
+                    <span>{countryData[result.country.properties.name]?.flag ?? "🌍"}</span>
+                    <span><strong>{result.country.properties.name}</strong><small>Open country atlas</small></span>
+                    {visitedCountries.has(result.country.properties.name) && <Check size={15} />}
+                  </button>
+                ) : (
+                  <button key={`city-${result.countryName}-${result.city.stateCode}-${result.city.name}`} onClick={() => addPlace(result.countryName, result.city.name)}>
+                    <span className="place-result-pin"><MapPin size={15} /></span>
+                    <span><strong>{result.city.name}</strong><small>{countryData[result.countryName]?.flag ?? "🌍"} {result.countryName} · Add place</small></span>
+                    {(visitedCities[result.countryName] ?? []).includes(result.city.name) && <Check size={15} />}
+                  </button>
+                ))}
+                {!placeResults.length && <p>No country or featured city found.</p>}
               </div>}
             </div>
           </div>
