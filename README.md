@@ -1,100 +1,133 @@
-# vinext-starter
+# Hermes
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Hermes is an interactive travel atlas, journal, and trip planner from BuildQuick. It gives travellers one place to record where they have been, explore countries and regions, plan future trips, and turn a completed itinerary into a lasting travel history.
 
-## Prerequisites
+The current release is a browser-based personal experience. Travel data stays in the browser on the device where it was entered; there is no account, cloud sync, booking integration, or shared itinerary service yet.
 
-- Node.js `>=22.13.0`
+## What Hermes does
 
-## Quick Start
+- Explore an interactive world map with country, state or province, and city detail.
+- Mark countries and cities as visited.
+- Search for countries, regions, cities, or a custom place.
+- Keep a travel journal with visited, planned, and dreaming entries.
+- Create multi-stop trips with dates, budget, traveller count, itinerary items, and checklists.
+- Complete a trip to add its destinations to the atlas and journal.
+- Track exploration progress through levels, XP, ranks, and achievements.
+- Review an Explorer Passport with travel depth, story coverage, personal rankings, and upcoming journeys.
+- Download a private JSON backup of countries, places, journal entries, and trips.
+- Preserve the atlas, journal, and trips locally between browser sessions.
+
+## Typical user workflows
+
+### Record a place
+
+1. Search for or select a country on the world map.
+2. Open its regional map and choose a city or region.
+3. Mark the location as visited, or add a custom place.
+4. Open **Travel journal** to add the date, rating, status, and a note.
+
+### Plan and complete a trip
+
+1. Open **Trip planner** and create a trip.
+2. Add one or more destinations, travel dates, budget, and traveller count.
+3. Build the daily itinerary and pre-travel checklist.
+4. Mark the trip complete after travelling.
+5. Hermes adds the trip destinations to the visited atlas and creates journal entries.
+
+### Review progress
+
+Use the atlas summary, Explorer Passport, and achievement panel to see visited-country coverage, saved cities, travel depth, story coverage, explorer XP, current level, and the next milestones.
+
+## Product boundaries
+
+Hermes is currently a personal travel organiser, not a booking or navigation service.
+
+- No flights, hotels, payments, live prices, maps navigation, or visa advice.
+- No sign-in, multi-device sync, collaboration, or backup import yet. JSON backup export is available from the Explorer Passport.
+- Browser data can be lost if site storage is cleared or a different browser or device is used.
+- Trip budgets are notes; Hermes does not calculate spend or exchange rates.
+- The included geographic data is intended for product exploration and may not represent every boundary or naming convention.
+
+## Technology
+
+- React 19 and TypeScript
+- [vinext](https://github.com/cloudflare/vinext) and Vite
+- Cloudflare Worker-compatible server output
+- D3 Geo, TopoJSON, and `world-atlas` for map rendering
+- Local JSON geographic datasets for country and administrative-region detail
+- Browser `localStorage` for the current personal workspace
+- OpenAI Sites configuration in `.openai/hosting.json`
+
+Hermes currently declares no D1 database or R2 bucket. The Drizzle files and `examples/d1/` directory are extension points, not part of the live product data flow.
+
+## Project structure
+
+```text
+app/
+  HermesApp.tsx       Main atlas, journal, achievements, and trip planner
+  country-data.json   Country metadata and representative cities
+  layout.tsx          Site metadata and social sharing configuration
+  page.tsx            Application entry page
+public/admin1/        Administrative-region GeoJSON by country code
+db/                   Optional Drizzle database foundation
+examples/d1/          Reference D1 example; not used by Hermes today
+tests/                Rendered-output and product-contract tests
+worker/               Cloudflare Worker entry point
+.openai/hosting.json  Sites project and optional resource bindings
+vite.config.ts        vinext, Sites, and Cloudflare build configuration
+```
+
+## Run locally
+
+### Requirements
+
+- Node.js 22.13 or newer
+- pnpm through Corepack
 
 ```bash
-npm install
-npm run dev
-npm run build
+corepack enable
+pnpm install --frozen-lockfile
+pnpm dev
 ```
 
-This starter does not use `wrangler.jsonc`.
+Open the local URL printed by the development server.
 
-## Included Shape
+## Quality checks
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
-
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+pnpm lint
+pnpm test
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+`pnpm test` builds the Worker output and verifies the server-rendered Hermes shell, metadata, atlas datasets, local persistence contract, journal, achievements, and trip-planning surface.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+For a production build without the test suite:
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+```bash
+pnpm build
+```
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+## Data and privacy
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+Hermes stores visited countries, visited cities, journal entries, and trips under the `hermes_travel_atlas_v1` browser-storage key. The application does not currently send that travel history to an application database. Users can download a JSON backup from the Explorer Passport.
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Do not treat browser storage as a backup. Download the atlas backup periodically. Before adding accounts or cloud sync, define import, deletion, retention, authentication, and recovery workflows.
 
-## Useful Commands
+## Deployment
 
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
+The repository is configured for OpenAI Sites and Cloudflare Worker-compatible output. `.openai/hosting.json` identifies the Sites project and declares its managed resources. Keep that file, `vite.config.ts`, and `worker/index.ts` aligned when adding a database, file storage, or other hosted capability.
 
-## Learn More
+Useful commands:
 
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Start local development |
+| `pnpm build` | Create the deployment build |
+| `pnpm start` | Run the built application locally |
+| `pnpm lint` | Check TypeScript and accessibility-oriented lint rules |
+| `pnpm test` | Build and run product-contract tests |
+| `pnpm db:generate` | Generate Drizzle migrations after a schema change |
+
+## Current status
+
+Hermes is an MVP suitable for exploring the travel-tracking and planning experience. Account-backed persistence, portability, collaboration, travel-service integrations, and production data recovery remain future work.
