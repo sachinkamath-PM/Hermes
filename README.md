@@ -14,7 +14,9 @@ The current release is a browser-based personal experience. Travel data stays in
 - Complete a trip to add its destinations to the atlas and journal.
 - Track exploration progress through levels, XP, ranks, and achievements.
 - Review an Explorer Passport with travel depth, story coverage, personal rankings, and upcoming journeys.
-- Download a private JSON backup of countries, places, journal entries, and trips.
+- Set personal country and place milestones with a target date.
+- Share a concise journey summary using the device share sheet or clipboard.
+- Download and restore a private JSON backup of countries, places, journal entries, trips, and goals.
 - Preserve the atlas, journal, and trips locally between browser sessions.
 
 ## Typical user workflows
@@ -43,7 +45,7 @@ Use the atlas summary, Explorer Passport, and achievement panel to see visited-c
 Hermes is currently a personal travel organiser, not a booking or navigation service.
 
 - No flights, hotels, payments, live prices, maps navigation, or visa advice.
-- No sign-in, multi-device sync, collaboration, or backup import yet. JSON backup export is available from the Explorer Passport.
+- No sign-in, automatic multi-device sync, or collaboration. Manual JSON backup and restore are available from the Explorer Passport.
 - Browser data can be lost if site storage is cleared or a different browser or device is used.
 - Trip budgets are notes; Hermes does not calculate spend or exchange rates.
 - The included geographic data is intended for product exploration and may not represent every boundary or naming convention.
@@ -109,9 +111,9 @@ pnpm build
 
 ## Data and privacy
 
-Hermes stores visited countries, visited cities, journal entries, and trips under the `hermes_travel_atlas_v1` browser-storage key. The application does not currently send that travel history to an application database. Users can download a JSON backup from the Explorer Passport.
+Hermes stores visited countries, visited cities, journal entries, trips, and travel goals under the `hermes_travel_atlas_v1` browser-storage key. The application does not currently send that travel history to an application database. Users can download or restore a JSON backup from the Explorer Passport.
 
-Do not treat browser storage as a backup. Download the atlas backup periodically. Before adding accounts or cloud sync, define import, deletion, retention, authentication, and recovery workflows.
+Do not treat browser storage as a backup. Download the atlas backup periodically. Restoring a backup replaces the atlas on the current device after confirmation. Before adding accounts or cloud sync, define deletion, retention, authentication, and recovery workflows.
 
 ## Deployment
 

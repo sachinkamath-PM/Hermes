@@ -67,7 +67,12 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /TripDestination/);
   assert.match(app, /Explorer passport/);
   assert.match(app, /Your travel signature/);
-  assert.match(app, /Download atlas backup/);
+  assert.match(app, /Download backup/);
+  assert.match(app, /Restore backup/);
+  assert.match(app, /Share journey/);
+  assert.match(app, /MY NEXT MILESTONE/);
+  assert.match(app, /restoreAtlas/);
+  assert.match(app, /navigator\.share/);
   assert.match(app, /new Blob/);
   assert.match(app, /hermes-atlas-/);
   assert.match(app, /const addPlace/);

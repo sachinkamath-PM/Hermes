@@ -25,7 +25,10 @@ import {
   Wallet,
   ListChecks,
   Route,
+  Share2,
+  Target,
   Trophy,
+  Upload,
   X,
   ZoomIn,
   ZoomOut,
@@ -67,6 +70,7 @@ type TripDestination = { id: string; country: string; place: string };
 type ItineraryItem = { id: string; date: string; time: string; title: string };
 type ChecklistItem = { id: string; text: string; done: boolean };
 type Trip = { id: string; title: string; startDate: string; endDate: string; budget: string; travellers: number; status: "planning" | "upcoming" | "completed"; destinations: TripDestination[]; itinerary: ItineraryItem[]; checklist: ChecklistItem[]; createdAt: number };
+type TravelGoals = { countries: number; places: number; targetDate: string };
 
 const atlas = feature(
   world as never,
@@ -90,10 +94,15 @@ const initialCities: Record<string, string[]> = {
   Japan: ["Tokyo", "Kyoto"],
   "United States of America": ["New York City", "San Francisco"],
 };
+const initialGoals: TravelGoals = { countries: 10, places: 25, targetDate: `${new Date().getFullYear()}-12-31` };
 
 function joinClass(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
+
+function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
+function isJournalEntry(value: unknown): value is JournalEntry { return isRecord(value) && typeof value.id === "string" && typeof value.country === "string" && typeof value.place === "string" && ["visited", "planned", "dreaming"].includes(String(value.status)); }
+function isTrip(value: unknown): value is Trip { return isRecord(value) && typeof value.id === "string" && typeof value.title === "string" && Array.isArray(value.destinations) && Array.isArray(value.itinerary) && Array.isArray(value.checklist); }
 
 function currentTimestamp() { return new Date().getTime(); }
 function createLocalId() { return globalThis.crypto?.randomUUID?.() ?? `${new Date().getTime()}-${Math.random()}`; }
@@ -144,7 +153,9 @@ function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose 
   );
 }
 
-function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries, trips, exploredPercent, level, rank, xp, onExport, onClose }: { visitedCountries: Set<string>; visitedCities: Record<string, string[]>; journalEntries: JournalEntry[]; trips: Trip[]; exploredPercent: number; level: number; rank: string; xp: number; onExport: () => void; onClose: () => void }) {
+function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries, trips, goals, exploredPercent, level, rank, xp, onGoalsChange, onImport, onExport, onClose }: { visitedCountries: Set<string>; visitedCities: Record<string, string[]>; journalEntries: JournalEntry[]; trips: Trip[]; goals: TravelGoals; exploredPercent: number; level: number; rank: string; xp: number; onGoalsChange: (goals: TravelGoals) => void; onImport: (payload: unknown) => boolean; onExport: () => void; onClose: () => void }) {
+  const importInput = useRef<HTMLInputElement>(null);
+  const [passportNotice, setPassportNotice] = useState("");
   const cityTotal = Object.values(visitedCities).reduce((sum, places) => sum + places.length, 0);
   const memories = journalEntries.filter((entry) => entry.status === "visited");
   const completedTrips = trips.filter((trip) => trip.status === "completed").length;
@@ -163,13 +174,35 @@ function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries
     { label: "Story coverage", value: storyCoverage, detail: "places with memories" },
     { label: "Trip readiness", value: tripReadiness, detail: "routes, plans & lists" },
   ];
+  const countryGoalProgress = Math.min(100, Math.round((visitedCountries.size / Math.max(goals.countries, 1)) * 100));
+  const placeGoalProgress = Math.min(100, Math.round((cityTotal / Math.max(goals.places, 1)) * 100));
+  const sharePassport = async () => {
+    const text = `I’ve explored ${visitedCountries.size} countries and pinned ${cityTotal} places with Hermes — ${exploredPercent}% of the world and counting.`;
+    try {
+      if (navigator.share) await navigator.share({ title: "My Hermes Explorer Passport", text, url: window.location.origin });
+      else if (navigator.clipboard) { await navigator.clipboard.writeText(`${text} ${window.location.origin}`); setPassportNotice("Journey summary copied"); }
+      else window.prompt("Copy your journey summary", `${text} ${window.location.origin}`);
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") setPassportNotice("Sharing is unavailable right now");
+    }
+  };
+  const importBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const payload = JSON.parse(await file.text()) as unknown;
+      if (!window.confirm("Restore this backup? It will replace the atlas currently saved on this device.")) return;
+      setPassportNotice(onImport(payload) ? "Atlas restored successfully" : "This does not look like a valid Hermes backup");
+    } catch { setPassportNotice("This file could not be read as a Hermes backup"); }
+    finally { event.target.value = ""; }
+  };
 
   return <div className="passport-backdrop"><section className="passport-panel" role="dialog" aria-modal="true" aria-labelledby="passport-title">
     <button className="passport-close" onClick={onClose} aria-label="Close explorer passport"><X size={18} /></button>
     <header className="passport-hero">
       <div className="passport-stamp"><HermesMark /><span>HERMES</span><small>EXPLORER · {new Date().getFullYear()}</small></div>
       <div><p className="micro-label">YOUR LIVING TRAVEL RECORD</p><h2 id="passport-title">Explorer passport</h2><p>A richer view of how widely—and how deeply—you have explored.</p></div>
-      <div className="passport-level"><span>LEVEL {level}</span><strong>{rank}</strong><small>{xp.toLocaleString()} XP earned</small></div>
+      <div className="passport-hero-actions"><div className="passport-level"><span>LEVEL {level}</span><strong>{rank}</strong><small>{xp.toLocaleString()} XP earned</small></div><button className="passport-share" onClick={sharePassport}><Share2 size={15} /> Share journey</button></div>
     </header>
     <div className="passport-layout">
       <div className="passport-overview">
@@ -183,6 +216,7 @@ function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries
       </div>
       <section className="passport-depth"><div className="passport-section-heading"><div><small>ATLAS DEPTH</small><h3>Your travel signature</h3></div><BarChart3 size={20} /></div>
         <div className="passport-metrics">{depthMetrics.map((metric) => <article key={metric.label}><div><strong>{metric.label}</strong><span>{metric.value}%</span></div><div className="passport-track"><i style={{ width: `${metric.value}%` }} /></div><small>{metric.detail}</small></article>)}</div>
+        <div className="passport-goals"><div className="passport-goals-title"><span><Target size={14} /> MY NEXT MILESTONE</span><input type="date" value={goals.targetDate} onChange={(event) => onGoalsChange({ ...goals, targetDate: event.target.value })} aria-label="Travel goal date" /></div><div className="passport-goal-grid"><label><span>Countries</span><input type="number" min={visitedCountries.size || 1} max={countries.length} value={goals.countries} onChange={(event) => onGoalsChange({ ...goals, countries: Math.max(1, Number(event.target.value)) })} /><i><b style={{ width: `${countryGoalProgress}%` }} /></i><small>{visitedCountries.size} of {goals.countries}</small></label><label><span>Places</span><input type="number" min={cityTotal || 1} max={9999} value={goals.places} onChange={(event) => onGoalsChange({ ...goals, places: Math.max(1, Number(event.target.value)) })} /><i><b style={{ width: `${placeGoalProgress}%` }} /></i><small>{cityTotal} of {goals.places}</small></label></div></div>
       </section>
       <section className="passport-ranking"><div className="passport-section-heading"><div><small>MOST EXPLORED</small><h3>Your personal top five</h3></div><MapPin size={20} /></div>
         <div className="passport-country-list">{mostExplored.length ? mostExplored.map((item, index) => <article key={item.country}><b>{index + 1}</b><span>{countryData[item.country]?.flag ?? "🌍"}</span><div><strong>{item.country}</strong><small>{item.count} {item.count === 1 ? "place" : "places"} pinned</small></div><em>{item.count || "—"}</em></article>) : <p>Pin your first country to begin your passport.</p>}</div>
@@ -191,7 +225,7 @@ function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries
         {nextTrip ? <article className="passport-next-trip"><span>{nextTrip.destinations.length} stops</span><strong>{nextTrip.title}</strong><p>{nextTrip.destinations.map((stop) => stop.place).join(" → ")}</p><small>{nextTrip.startDate ? new Date(`${nextTrip.startDate}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "Dates open"}</small></article> : futurePlaces.length ? <div className="passport-wishlist">{futurePlaces.map((entry) => <span key={entry.id}>{countryData[entry.country]?.flag ?? "🌍"} {entry.place}</span>)}</div> : <div className="passport-empty-next"><strong>Every great route starts as an idea.</strong><p>Add a dream to your journal or plan your next trip.</p></div>}
       </section>
     </div>
-    <footer className="passport-footer"><div><strong>Your atlas belongs to you.</strong><span>Download a private backup of every pin, memory and plan.</span></div><button onClick={onExport}><Download size={16} /> Download atlas backup</button></footer>
+    <footer className="passport-footer"><div><strong>Your atlas belongs to you.</strong><span>{passportNotice || "Protect every pin, memory, plan and personal goal."}</span></div><div className="passport-data-actions"><input ref={importInput} type="file" accept="application/json,.json" onChange={importBackup} /><button className="passport-import" onClick={() => importInput.current?.click()}><Upload size={16} /> Restore backup</button><button onClick={onExport}><Download size={16} /> Download backup</button></div></footer>
   </section></div>;
 }
 
@@ -497,6 +531,7 @@ export default function HermesApp() {
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
   const [tripsOpen, setTripsOpen] = useState(false);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [travelGoals, setTravelGoals] = useState<TravelGoals>(initialGoals);
   const [hovered, setHovered] = useState<string | null>(null);
   const [regions, setRegions] = useState<AdminRegion[]>([]);
   const [regionsLoading, setRegionsLoading] = useState(false);
@@ -518,11 +553,12 @@ export default function HermesApp() {
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]>; journal?: JournalEntry[]; trips?: Trip[] };
+          const parsed = JSON.parse(stored) as { countries?: string[]; cities?: Record<string, string[]>; journal?: JournalEntry[]; trips?: Trip[]; goals?: TravelGoals };
           if (Array.isArray(parsed.countries)) setVisitedCountries(new Set(parsed.countries));
           if (parsed.cities && typeof parsed.cities === "object") setVisitedCities(parsed.cities);
           if (Array.isArray(parsed.journal)) setJournalEntries(parsed.journal);
           if (Array.isArray(parsed.trips)) setTrips(parsed.trips);
+          if (parsed.goals && Number.isFinite(parsed.goals.countries) && Number.isFinite(parsed.goals.places)) setTravelGoals(parsed.goals);
         }
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -534,8 +570,8 @@ export default function HermesApp() {
 
   useEffect(() => {
     if (!hydrated) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities, journal: journalEntries, trips }));
-  }, [hydrated, visitedCountries, visitedCities, journalEntries, trips]);
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ countries: [...visitedCountries], cities: visitedCities, journal: journalEntries, trips, goals: travelGoals }));
+  }, [hydrated, visitedCountries, visitedCities, journalEntries, trips, travelGoals]);
 
   useEffect(() => {
     const countryCode = selectedCountry ? countryData[selectedCountry.properties.name]?.code : null;
@@ -595,8 +631,20 @@ export default function HermesApp() {
     { title: "Atlas Elite", description: "Reach twenty-five countries explored.", icon: "🏆", progress: visitedCountries.size, target: 25, xp: 1000 },
   ];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
+  const restoreAtlas = (payload: unknown) => {
+    if (!isRecord(payload) || !Array.isArray(payload.countries) || !payload.countries.every((country) => typeof country === "string") || !isRecord(payload.cities)) return false;
+    const restoredCities = Object.fromEntries(Object.entries(payload.cities).filter((entry): entry is [string, string[]] => Array.isArray(entry[1]) && entry[1].every((place) => typeof place === "string")));
+    const restoredJournal = Array.isArray(payload.journal) && payload.journal.every(isJournalEntry) ? payload.journal : [];
+    const restoredTrips = Array.isArray(payload.trips) && payload.trips.every(isTrip) ? payload.trips : [];
+    setVisitedCountries(new Set(payload.countries.filter((country) => countryNames.includes(country))));
+    setVisitedCities(restoredCities);
+    setJournalEntries(restoredJournal);
+    setTrips(restoredTrips);
+    if (isRecord(payload.goals) && Number.isFinite(payload.goals.countries) && Number.isFinite(payload.goals.places)) setTravelGoals({ countries: Number(payload.goals.countries), places: Number(payload.goals.places), targetDate: typeof payload.goals.targetDate === "string" ? payload.goals.targetDate : initialGoals.targetDate });
+    return true;
+  };
   const exportAtlas = () => {
-    const payload = { version: 1, exportedAt: new Date().toISOString(), countries: [...visitedCountries].sort(), cities: visitedCities, journal: journalEntries, trips };
+    const payload = { version: 2, exportedAt: new Date().toISOString(), countries: [...visitedCountries].sort(), cities: visitedCities, journal: journalEntries, trips, goals: travelGoals };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
@@ -604,7 +652,7 @@ export default function HermesApp() {
     link.click();
     URL.revokeObjectURL(url);
   };
-  const passportOverlay = passportOpen ? <ExplorerPassportPanel visitedCountries={visitedCountries} visitedCities={visitedCities} journalEntries={journalEntries} trips={trips} exploredPercent={exploredPercent} level={explorerLevel} rank={explorerRank} xp={explorerXp} onExport={exportAtlas} onClose={() => setPassportOpen(false)} /> : null;
+  const passportOverlay = passportOpen ? <ExplorerPassportPanel visitedCountries={visitedCountries} visitedCities={visitedCities} journalEntries={journalEntries} trips={trips} goals={travelGoals} exploredPercent={exploredPercent} level={explorerLevel} rank={explorerRank} xp={explorerXp} onGoalsChange={setTravelGoals} onImport={restoreAtlas} onExport={exportAtlas} onClose={() => setPassportOpen(false)} /> : null;
   const achievementOverlay = achievementsOpen ? <AchievementPanel achievements={achievements} level={explorerLevel} rank={explorerRank} xp={explorerXp} xpIntoLevel={xpIntoLevel} onClose={() => setAchievementsOpen(false)} /> : null;
   const saveJournalEntry = (entry: Omit<JournalEntry, "id" | "createdAt">) => {
     const nextEntry: JournalEntry = { ...entry, id: createLocalId(), createdAt: currentTimestamp() };
