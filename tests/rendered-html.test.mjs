@@ -28,9 +28,10 @@ test("server-renders Hermes product metadata and application shell", async () =>
 });
 
 test("ships the complete atlas data and removes starter preview code", async () => {
-  const [page, app, atlas, indiaRegions, usRegions, franceRegions] = await Promise.all([
+  const [page, app, styles, atlas, indiaRegions, usRegions, franceRegions] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/HermesApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/country-data.json", import.meta.url), "utf8"),
     readFile(new URL("../public/admin1/IN.json", import.meta.url), "utf8"),
     readFile(new URL("../public/admin1/US.json", import.meta.url), "utf8"),
@@ -73,6 +74,9 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /MY NEXT MILESTONE/);
   assert.match(app, /restoreAtlas/);
   assert.match(app, /navigator\.share/);
+  assert.match(app, /closeDesktopMenu/);
+  assert.match(styles, /\.menu-button,.mobile-menu\{display:none!important\}/);
+  assert.match(styles, /@media\(max-width:920px\)/);
   assert.match(app, /new Blob/);
   assert.match(app, /hermes-atlas-/);
   assert.match(app, /const addPlace/);

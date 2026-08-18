@@ -1072,6 +1072,11 @@ export default function HermesApp() {
 
 function Header({ onHome, onPassport, onAchievements, onJournal, onTrips, passportActive = false, achievementsActive = false, journalActive = false, tripsActive = false }: { onHome?: () => void; onPassport?: () => void; onAchievements?: () => void; onJournal?: () => void; onTrips?: () => void; passportActive?: boolean; achievementsActive?: boolean; journalActive?: boolean; tripsActive?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  useEffect(() => {
+    const closeDesktopMenu = () => { if (window.innerWidth > 920) setMenuOpen(false); };
+    window.addEventListener("resize", closeDesktopMenu);
+    return () => window.removeEventListener("resize", closeDesktopMenu);
+  }, []);
   const navigate = (handler?: () => void) => {
     handler?.();
     setMenuOpen(false);

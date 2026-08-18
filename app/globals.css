@@ -79,3 +79,5 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline-color:
 @media(max-width:1050px){.passport-hero-actions .passport-level{display:none}.passport-share{height:44px}.passport-layout{grid-template-columns:.85fr 1.1fr 1fr}}
 @media(max-width:900px){.passport-hero-actions{display:block}.passport-layout{grid-template-columns:1fr 1fr}.passport-goals{margin-bottom:4px}.passport-data-actions{width:100%;justify-content:flex-end}}
 @media(max-width:650px){.passport-hero-actions{display:none}.passport-data-actions{display:grid;grid-template-columns:1fr 1fr}.passport-data-actions button{min-width:0}.passport-goal-grid{grid-template-columns:1fr 1fr}}
+.menu-button,.mobile-menu{display:none!important}
+@media(max-width:920px){.hermes-header{grid-template-columns:1fr auto}.hermes-header>nav:not(.mobile-menu){display:none}.menu-button{display:grid!important}.mobile-menu{display:grid!important}}
