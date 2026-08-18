@@ -63,6 +63,11 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /Create trip/);
   assert.match(app, /Complete trip & update atlas/);
   assert.match(app, /TripDestination/);
+  assert.match(app, /Explorer passport/);
+  assert.match(app, /Your travel signature/);
+  assert.match(app, /Download atlas backup/);
+  assert.match(app, /new Blob/);
+  assert.match(app, /hermes-atlas-/);
   assert.match(app, /const addPlace/);
   assert.match(app, /new Set\(current\)\.add\(countryName\)/);
   assert.ok(Object.keys(JSON.parse(atlas)).length >= 175);

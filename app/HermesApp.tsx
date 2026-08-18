@@ -4,11 +4,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Award,
+  BarChart3,
   BookOpen,
   CalendarDays,
   Check,
   ChevronRight,
   Compass,
+  Download,
   Earth,
   Globe2,
   MapPin,
@@ -140,6 +142,57 @@ function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose 
       </section>
     </div>
   );
+}
+
+function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries, trips, exploredPercent, level, rank, xp, onExport, onClose }: { visitedCountries: Set<string>; visitedCities: Record<string, string[]>; journalEntries: JournalEntry[]; trips: Trip[]; exploredPercent: number; level: number; rank: string; xp: number; onExport: () => void; onClose: () => void }) {
+  const cityTotal = Object.values(visitedCities).reduce((sum, places) => sum + places.length, 0);
+  const memories = journalEntries.filter((entry) => entry.status === "visited");
+  const completedTrips = trips.filter((trip) => trip.status === "completed").length;
+  const countryDepth = visitedCountries.size ? Math.round((Object.keys(visitedCities).filter((country) => visitedCountries.has(country) && visitedCities[country]?.length).length / visitedCountries.size) * 100) : 0;
+  const storyCoverage = cityTotal ? Math.min(100, Math.round((new Set(memories.map((entry) => `${entry.country}:${entry.place.toLowerCase()}`)).size / cityTotal) * 100)) : 0;
+  const tripReadiness = trips.length ? Math.round((trips.reduce((sum, trip) => sum + (trip.destinations.length > 0 ? 1 : 0) + (trip.itinerary.length > 0 ? 1 : 0) + (trip.checklist.length > 0 ? 1 : 0), 0) / (trips.length * 3)) * 100) : 0;
+  const mostExplored = [...visitedCountries]
+    .map((country) => ({ country, count: visitedCities[country]?.length ?? 0 }))
+    .sort((a, b) => b.count - a.count || a.country.localeCompare(b.country))
+    .slice(0, 5);
+  const nextTrip = trips.filter((trip) => trip.status !== "completed").sort((a, b) => (a.startDate || "9999").localeCompare(b.startDate || "9999"))[0];
+  const futurePlaces = journalEntries.filter((entry) => entry.status !== "visited").slice(0, 3);
+  const depthMetrics = [
+    { label: "World coverage", value: exploredPercent, detail: `${visitedCountries.size} countries` },
+    { label: "Country depth", value: countryDepth, detail: "with places pinned" },
+    { label: "Story coverage", value: storyCoverage, detail: "places with memories" },
+    { label: "Trip readiness", value: tripReadiness, detail: "routes, plans & lists" },
+  ];
+
+  return <div className="passport-backdrop"><section className="passport-panel" role="dialog" aria-modal="true" aria-labelledby="passport-title">
+    <button className="passport-close" onClick={onClose} aria-label="Close explorer passport"><X size={18} /></button>
+    <header className="passport-hero">
+      <div className="passport-stamp"><HermesMark /><span>HERMES</span><small>EXPLORER · {new Date().getFullYear()}</small></div>
+      <div><p className="micro-label">YOUR LIVING TRAVEL RECORD</p><h2 id="passport-title">Explorer passport</h2><p>A richer view of how widely—and how deeply—you have explored.</p></div>
+      <div className="passport-level"><span>LEVEL {level}</span><strong>{rank}</strong><small>{xp.toLocaleString()} XP earned</small></div>
+    </header>
+    <div className="passport-layout">
+      <div className="passport-overview">
+        <div className="passport-coverage-ring" style={{ "--passport-progress": `${Math.max(exploredPercent, 1) * 3.6}deg` } as React.CSSProperties}><div><strong>{exploredPercent}%</strong><span>of the world</span></div></div>
+        <div className="passport-kpis">
+          <article><span>🌍</span><strong>{visitedCountries.size}</strong><small>countries</small></article>
+          <article><span>📍</span><strong>{cityTotal}</strong><small>places</small></article>
+          <article><span>✍️</span><strong>{memories.length}</strong><small>memories</small></article>
+          <article><span>✓</span><strong>{completedTrips}</strong><small>trips completed</small></article>
+        </div>
+      </div>
+      <section className="passport-depth"><div className="passport-section-heading"><div><small>ATLAS DEPTH</small><h3>Your travel signature</h3></div><BarChart3 size={20} /></div>
+        <div className="passport-metrics">{depthMetrics.map((metric) => <article key={metric.label}><div><strong>{metric.label}</strong><span>{metric.value}%</span></div><div className="passport-track"><i style={{ width: `${metric.value}%` }} /></div><small>{metric.detail}</small></article>)}</div>
+      </section>
+      <section className="passport-ranking"><div className="passport-section-heading"><div><small>MOST EXPLORED</small><h3>Your personal top five</h3></div><MapPin size={20} /></div>
+        <div className="passport-country-list">{mostExplored.length ? mostExplored.map((item, index) => <article key={item.country}><b>{index + 1}</b><span>{countryData[item.country]?.flag ?? "🌍"}</span><div><strong>{item.country}</strong><small>{item.count} {item.count === 1 ? "place" : "places"} pinned</small></div><em>{item.count || "—"}</em></article>) : <p>Pin your first country to begin your passport.</p>}</div>
+      </section>
+      <section className="passport-next"><div className="passport-section-heading"><div><small>NEXT CHAPTER</small><h3>Where your story goes next</h3></div><Plane size={20} /></div>
+        {nextTrip ? <article className="passport-next-trip"><span>{nextTrip.destinations.length} stops</span><strong>{nextTrip.title}</strong><p>{nextTrip.destinations.map((stop) => stop.place).join(" → ")}</p><small>{nextTrip.startDate ? new Date(`${nextTrip.startDate}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "Dates open"}</small></article> : futurePlaces.length ? <div className="passport-wishlist">{futurePlaces.map((entry) => <span key={entry.id}>{countryData[entry.country]?.flag ?? "🌍"} {entry.place}</span>)}</div> : <div className="passport-empty-next"><strong>Every great route starts as an idea.</strong><p>Add a dream to your journal or plan your next trip.</p></div>}
+      </section>
+    </div>
+    <footer className="passport-footer"><div><strong>Your atlas belongs to you.</strong><span>Download a private backup of every pin, memory and plan.</span></div><button onClick={onExport}><Download size={16} /> Download atlas backup</button></footer>
+  </section></div>;
 }
 
 function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { entries: JournalEntry[]; defaultCountry: string; onSave: (entry: Omit<JournalEntry, "id" | "createdAt">) => void; onDelete: (id: string) => void; onClose: () => void }) {
@@ -438,6 +491,7 @@ export default function HermesApp() {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [manualCityName, setManualCityName] = useState("");
+  const [passportOpen, setPassportOpen] = useState(false);
   const [achievementsOpen, setAchievementsOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
@@ -514,11 +568,11 @@ export default function HermesApp() {
   }, []);
 
   useEffect(() => {
-    if (!achievementsOpen && !journalOpen && !tripsOpen) return;
-    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); } };
+    if (!passportOpen && !achievementsOpen && !journalOpen && !tripsOpen) return;
+    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setPassportOpen(false); setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); } };
     window.addEventListener("keydown", closePanels);
     return () => window.removeEventListener("keydown", closePanels);
-  }, [achievementsOpen, journalOpen, tripsOpen]);
+  }, [passportOpen, achievementsOpen, journalOpen, tripsOpen]);
 
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
@@ -541,6 +595,16 @@ export default function HermesApp() {
     { title: "Atlas Elite", description: "Reach twenty-five countries explored.", icon: "🏆", progress: visitedCountries.size, target: 25, xp: 1000 },
   ];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
+  const exportAtlas = () => {
+    const payload = { version: 1, exportedAt: new Date().toISOString(), countries: [...visitedCountries].sort(), cities: visitedCities, journal: journalEntries, trips };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `hermes-atlas-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const passportOverlay = passportOpen ? <ExplorerPassportPanel visitedCountries={visitedCountries} visitedCities={visitedCities} journalEntries={journalEntries} trips={trips} exploredPercent={exploredPercent} level={explorerLevel} rank={explorerRank} xp={explorerXp} onExport={exportAtlas} onClose={() => setPassportOpen(false)} /> : null;
   const achievementOverlay = achievementsOpen ? <AchievementPanel achievements={achievements} level={explorerLevel} rank={explorerRank} xp={explorerXp} xpIntoLevel={xpIntoLevel} onClose={() => setAchievementsOpen(false)} /> : null;
   const saveJournalEntry = (entry: Omit<JournalEntry, "id" | "createdAt">) => {
     const nextEntry: JournalEntry = { ...entry, id: createLocalId(), createdAt: currentTimestamp() };
@@ -747,7 +811,7 @@ export default function HermesApp() {
     const remoteRegions = regions.filter((region) => selectedRemoteCodes.has(region.properties.code));
     return (
       <div className="hermes-app detail-mode">
-        <Header onHome={returnToWorld} onAchievements={() => { setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
+        <Header onHome={returnToWorld} onPassport={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); setPassportOpen(true); }} onAchievements={() => { setPassportOpen(false); setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setPassportOpen(false); setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setPassportOpen(false); setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} passportActive={passportOpen} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
         <main className="country-view">
           <aside className="country-rail">
             <button className="back-button" onClick={returnToWorld}><ArrowLeft size={17} /> Back to world</button>
@@ -847,6 +911,7 @@ export default function HermesApp() {
             </section>
           </section>
         </main>
+        {passportOverlay}
         {achievementOverlay}
         {journalOverlay}
         {tripOverlay}
@@ -856,7 +921,7 @@ export default function HermesApp() {
 
   return (
     <div className="hermes-app">
-      <Header onAchievements={() => { setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
+      <Header onPassport={() => { setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); setPassportOpen(true); }} onAchievements={() => { setPassportOpen(false); setJournalOpen(false); setTripsOpen(false); setAchievementsOpen(true); }} onJournal={() => { setPassportOpen(false); setAchievementsOpen(false); setTripsOpen(false); setJournalOpen(true); }} onTrips={() => { setPassportOpen(false); setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(true); }} passportActive={passportOpen} achievementsActive={achievementsOpen} journalActive={journalOpen} tripsActive={tripsOpen} />
       <main className="atlas-layout">
         <aside className="journey-panel">
           <p className="micro-label">YOUR TRAVEL ATLAS</p>
@@ -874,6 +939,7 @@ export default function HermesApp() {
             <span><small>{explorerRank}</small><strong>{explorerXp.toLocaleString()} XP</strong><i><b style={{ width: `${(xpIntoLevel / 500) * 100}%` }} /></i></span>
             <em>{unlockedAchievementCount}<Trophy size={13} /></em>
           </button>
+          <button className="passport-quick-card" onClick={() => setPassportOpen(true)}><span><BarChart3 size={18} /></span><span><small>EXPLORER PASSPORT</small><strong>See your travel signature</strong></span><ChevronRight size={16} /></button>
           <button className="journal-quick-card" onClick={() => setJournalOpen(true)}><span><BookOpen size={18} /></span><span><small>TRAVEL JOURNAL</small><strong>{journalEntries.length ? `${journalEntries.length} memories & plans` : "Start your timeline"}</strong></span><ChevronRight size={16} /></button>
           <button className="trip-quick-card" onClick={() => setTripsOpen(true)}><span><Plane size={18} /></span><span><small>NEXT ADVENTURE</small><strong>{nextTrip ? nextTrip.title : "Plan a new trip"}</strong></span><ChevronRight size={16} /></button>
           <div className="recent-section">
@@ -948,6 +1014,7 @@ export default function HermesApp() {
           </div>
         </section>
       </main>
+      {passportOverlay}
       {achievementOverlay}
       {journalOverlay}
       {tripOverlay}
@@ -955,7 +1022,7 @@ export default function HermesApp() {
   );
 }
 
-function Header({ onHome, onAchievements, onJournal, onTrips, achievementsActive = false, journalActive = false, tripsActive = false }: { onHome?: () => void; onAchievements?: () => void; onJournal?: () => void; onTrips?: () => void; achievementsActive?: boolean; journalActive?: boolean; tripsActive?: boolean }) {
+function Header({ onHome, onPassport, onAchievements, onJournal, onTrips, passportActive = false, achievementsActive = false, journalActive = false, tripsActive = false }: { onHome?: () => void; onPassport?: () => void; onAchievements?: () => void; onJournal?: () => void; onTrips?: () => void; passportActive?: boolean; achievementsActive?: boolean; journalActive?: boolean; tripsActive?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = (handler?: () => void) => {
     handler?.();
@@ -964,9 +1031,9 @@ function Header({ onHome, onAchievements, onJournal, onTrips, achievementsActive
   return (
     <header className="hermes-header">
       <button className="brand-button" onClick={onHome} aria-label="Hermes home"><HermesMark /><span><strong>Hermes</strong><small>by BuildQuick</small></span></button>
-      <nav aria-label="Primary navigation"><button className={!achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={onTrips}><Plane size={17} /> Trips</button></nav>
+      <nav aria-label="Primary navigation"><button className={!passportActive && !achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={onHome}><Earth size={17} /> World map</button><button className={passportActive ? "active" : ""} onClick={onPassport}><BarChart3 size={17} /> Passport</button><button className={journalActive ? "active" : ""} onClick={onJournal}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={onAchievements}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={onTrips}><Plane size={17} /> Trips</button></nav>
       <div className="header-actions"><button className="menu-button" aria-label={menuOpen ? "Close menu" : "Open menu"} aria-expanded={menuOpen} aria-controls="hermes-menu" onClick={() => setMenuOpen((open) => !open)}>{menuOpen ? <X size={19} /> : <Menu size={19} />}</button><span className="profile-avatar">SK</span></div>
-      {menuOpen && <nav className="mobile-menu" id="hermes-menu" aria-label="Hermes menu"><button className={!achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={() => navigate(onHome)}><Earth size={17} /> World map</button><button className={journalActive ? "active" : ""} onClick={() => navigate(onJournal)}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={() => navigate(onAchievements)}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={() => navigate(onTrips)}><Plane size={17} /> Trips</button></nav>}
+      {menuOpen && <nav className="mobile-menu" id="hermes-menu" aria-label="Hermes menu"><button className={!passportActive && !achievementsActive && !journalActive && !tripsActive ? "active" : ""} onClick={() => navigate(onHome)}><Earth size={17} /> World map</button><button className={passportActive ? "active" : ""} onClick={() => navigate(onPassport)}><BarChart3 size={17} /> Passport</button><button className={journalActive ? "active" : ""} onClick={() => navigate(onJournal)}><BookOpen size={17} /> Journal</button><button className={achievementsActive ? "active" : ""} onClick={() => navigate(onAchievements)}><Trophy size={17} /> Achievements</button><button className={tripsActive ? "active" : ""} onClick={() => navigate(onTrips)}><Plane size={17} /> Trips</button></nav>}
     </header>
   );
 }
