@@ -47,6 +47,8 @@ test("ships the complete atlas data and removes starter preview code", async () 
   assert.match(app, /Metropolitan France/);
   assert.match(app, /Geographic insets/);
   assert.match(app, /state-selection-outline/);
+  assert.match(app, /tooltip-left/);
+  assert.match(app, /tooltip-right/);
   assert.doesNotMatch(app, /country-glow|map-shadow/);
   assert.match(app, /Search countries, cities or regions/);
   assert.match(app, /Add any city or place/);

@@ -1000,7 +1000,7 @@ export default function HermesApp() {
               {countries.map((country) => {
                 const name = country.properties.name;
                 const isVisited = visitedCountries.has(name);
-                return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered", transitioningCountry === name && "entering")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseMove={updateTooltipPoint} onMouseLeave={() => setHovered(null)} onFocus={() => { setHovered(name); const [x, y] = worldPath.centroid(country as never); setTooltipPoint({ x: x / 10, y: y / 5.5 }); }} onBlur={() => setHovered(null)} onClick={() => animateIntoCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") animateIntoCountry(country); }} />;
+                return <path key={name} tabIndex={0} aria-label={`${name}${isVisited ? ", visited" : ""}`} className={joinClass("map-country", isVisited && "visited", hovered === name && "hovered", transitioningCountry === name && "entering")} d={worldPath(country as never) ?? ""} onMouseEnter={() => setHovered(name)} onMouseMove={updateTooltipPoint} onMouseLeave={() => setHovered(null)} onFocus={() => { setHovered(name); const [x, y] = worldPath.centroid(country as never); setTooltipPoint({ x: ((x * worldTransform.k) + worldTransform.x) / 10, y: ((y * worldTransform.k) + worldTransform.y) / 5.5 }); }} onBlur={() => setHovered(null)} onClick={() => animateIntoCountry(country)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") animateIntoCountry(country); }} />;
               })}
               {emphasizedCountry && <>
                 <path className={joinClass("active-country-halo", transitioningCountry && "entering")} d={worldPath(emphasizedCountry as never) ?? ""} />
@@ -1008,7 +1008,7 @@ export default function HermesApp() {
               </>}
               </g>
             </svg>
-            {hovered && !isPanning && <div className="country-tooltip" style={{ "--tooltip-x": `${tooltipPoint.x}%`, "--tooltip-y": `${tooltipPoint.y}%` } as React.CSSProperties}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={16} /></div>}
+            {hovered && !isPanning && <div className={joinClass("country-tooltip", tooltipPoint.x > 58 ? "tooltip-left" : "tooltip-right", tooltipPoint.y < 24 && "tooltip-below")} style={{ "--tooltip-x": `${tooltipPoint.x}%`, "--tooltip-y": `${tooltipPoint.y}%` } as React.CSSProperties}><span>{countryData[hovered]?.flag ?? "🌍"}</span><div><strong>{hovered}</strong><small>{visitedCountries.has(hovered) ? "Visited · Open atlas" : "Open country atlas"}</small></div><ChevronRight size={15} /></div>}
             <div className="map-instruction"><Compass size={16} /><span>{worldTransform.k > 1 ? "Drag to explore · scroll to zoom" : "Click a country · scroll to zoom"}</span></div>
             <div className="map-scale"><span /><span /><span /><small>EXPLORE</small></div>
           </div>
