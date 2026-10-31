@@ -133,3 +133,7 @@ Useful commands:
 ## Current status
 
 Hermes is an MVP suitable for exploring the travel-tracking and planning experience. Account-backed persistence, portability, collaboration, travel-service integrations, and production data recovery remain future work.
+
+## Type checking
+
+Run `npm run typecheck` after installing dependencies. Cloudflare runtime declarations are pinned to the workerd version used by Wrangler; binding names and optionality are declared in `cloudflare-env.d.ts`. Keep that file aligned with `vite.config.ts` and `.openai/hosting.json` when changing bindings. The Worker entry point and `cloudflare:workers` imports use the same environment type.

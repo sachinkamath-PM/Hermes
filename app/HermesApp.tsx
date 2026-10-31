@@ -1,5 +1,6 @@
 "use client";
 
+import { Modal } from "./Modal";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -119,7 +120,7 @@ function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose 
   const unlocked = achievements.filter((achievement) => achievement.progress >= achievement.target).length;
   return (
     <div className="achievement-backdrop">
-      <section className="achievement-panel" role="dialog" aria-modal="true" aria-labelledby="achievement-title">
+      <Modal className="achievement-panel" labelledBy="achievement-title" onClose={onClose}>
         <button className="achievement-close" onClick={onClose} aria-label="Close achievements"><X size={18} /></button>
         <div className="achievement-hero">
           <div className="level-medallion"><span>LVL</span><strong>{level}</strong></div>
@@ -148,7 +149,7 @@ function AchievementPanel({ achievements, level, rank, xp, xpIntoLevel, onClose 
             </article>;
           })}
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }
@@ -197,7 +198,7 @@ function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries
     finally { event.target.value = ""; }
   };
 
-  return <div className="passport-backdrop"><section className="passport-panel" role="dialog" aria-modal="true" aria-labelledby="passport-title">
+  return <div className="passport-backdrop"><Modal className="passport-panel" labelledBy="passport-title" onClose={onClose}>
     <button className="passport-close" onClick={onClose} aria-label="Close explorer passport"><X size={18} /></button>
     <header className="passport-hero">
       <div className="passport-stamp"><HermesMark /><span>HERMES</span><small>EXPLORER · {new Date().getFullYear()}</small></div>
@@ -226,7 +227,7 @@ function ExplorerPassportPanel({ visitedCountries, visitedCities, journalEntries
       </section>
     </div>
     <footer className="passport-footer"><div><strong>Your atlas belongs to you.</strong><span>{passportNotice || "Protect every pin, memory, plan and personal goal."}</span></div><div className="passport-data-actions"><input ref={importInput} type="file" accept="application/json,.json" onChange={importBackup} /><button className="passport-import" onClick={() => importInput.current?.click()}><Upload size={16} /> Restore backup</button><button onClick={onExport}><Download size={16} /> Download backup</button></div></footer>
-  </section></div>;
+  </Modal></div>;
 }
 
 function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { entries: JournalEntry[]; defaultCountry: string; onSave: (entry: Omit<JournalEntry, "id" | "createdAt">) => void; onDelete: (id: string) => void; onClose: () => void }) {
@@ -248,7 +249,7 @@ function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { 
   };
   return (
     <div className="journal-backdrop">
-      <section className="journal-panel" role="dialog" aria-modal="true" aria-labelledby="journal-title">
+      <Modal className="journal-panel" labelledBy="journal-title" onClose={onClose}>
         <button className="journal-close" onClick={onClose} aria-label="Close travel journal"><X size={18} /></button>
         <header className="journal-header">
           <span className="journal-mark"><BookOpen size={25} /></span>
@@ -281,7 +282,7 @@ function JournalPanel({ entries, defaultCountry, onSave, onDelete, onClose }: { 
             </article>)}</div> : <div className="journal-empty"><span>✈️</span><strong>{entries.length ? "No entries in this view" : "Your story starts with one place"}</strong><p>{entries.length ? "Choose another status to see more of your journey." : "Add a memory, a future plan, or somewhere you dream of visiting."}</p></div>}
           </div>
         </div>
-      </section>
+      </Modal>
     </div>
   );
 }
@@ -304,12 +305,12 @@ function TripPanel({ trips, defaultCountry, onCreate, onUpdate, onDelete, onComp
   const addItinerary = () => { if (!activeTrip || !planTitle.trim()) return; onUpdate({ ...activeTrip, itinerary: [...activeTrip.itinerary, { id: createLocalId(), date: planDate, time: planTime, title: planTitle.trim() }] }); setPlanTitle(""); setPlanTime(""); };
   const addChecklist = () => { if (!activeTrip || !checkText.trim()) return; onUpdate({ ...activeTrip, checklist: [...activeTrip.checklist, { id: createLocalId(), text: checkText.trim(), done: false }] }); setCheckText(""); };
   const countdown = activeTrip?.startDate ? Math.ceil((new Date(`${activeTrip.startDate}T00:00:00`).getTime() - openedAt) / 86400000) : null;
-  return <div className="trip-backdrop"><section className="trip-panel" role="dialog" aria-modal="true" aria-labelledby="trip-title">
+  return <div className="trip-backdrop"><Modal className="trip-panel" labelledBy="trip-title" onClose={onClose}>
     <button className="trip-close" onClick={onClose} aria-label="Close trip planner"><X size={18} /></button>
     <header className="trip-header"><span><Plane size={25} /></span><div><p className="micro-label">FROM DREAM TO DEPARTURE</p><h2 id="trip-title">Trip planner</h2><p>Build the route, organize each day, and travel ready.</p></div><button onClick={() => { setCreating(true); setActiveId(null); }}><Plus size={15} /> New trip</button></header>
     <div className="trip-layout"><aside className="trip-list"><div className="trip-list-title"><span>MY TRIPS</span><small>{trips.length}</small></div>{trips.length ? trips.map((trip) => <button key={trip.id} className={activeId === trip.id && !creating ? "active" : ""} onClick={() => { setActiveId(trip.id); setCreating(false); }}><span>{trip.status === "completed" ? "✓" : "✈"}</span><span><strong>{trip.title}</strong><small>{trip.destinations.length} stops · {trip.startDate || "Dates open"}</small></span><ChevronRight size={14} /></button>) : <div className="no-trips"><span>🧳</span><strong>No trips yet</strong><p>Your next adventure starts here.</p></div>}</aside>
       <main className="trip-workspace">{creating ? <form className="create-trip-form" onSubmit={createTrip}><div className="trip-form-intro"><p className="micro-label">NEW ADVENTURE</p><h3>Where are you going?</h3><p>Start with the essentials. You can shape each day afterwards.</p></div><div className="trip-form-grid"><label className="wide"><span>Trip name</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Summer in Japan" required /></label><label><span>Start date</span><input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label><label><span>End date</span><input type="date" min={startDate} value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label><label><span>Budget</span><input value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="e.g. ₹1,50,000" /></label><label><span>Travellers</span><input type="number" min="1" max="50" value={travellers} onChange={(event) => setTravellers(Number(event.target.value))} /></label></div><div className="route-builder"><div><small>ROUTE</small><strong>Add every stop</strong></div><div className="route-fields"><select value={routeCountry} onChange={(event) => setRouteCountry(event.target.value)}>{countryNames.map((name) => <option key={name}>{name}</option>)}</select><input value={routePlace} onChange={(event) => setRoutePlace(event.target.value)} placeholder="City or place" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRouteStop(); } }} /><button type="button" onClick={addRouteStop}><Plus size={15} /> Add</button></div>{routeDraft.length > 0 && <div className="route-draft">{routeDraft.map((stop,index) => <span key={stop.id}><b>{index + 1}</b>{stop.place}, {stop.country}<button type="button" onClick={() => setRouteDraft((current) => current.filter((item) => item.id !== stop.id))}><X size={12} /></button></span>)}</div>}</div><button className="create-trip-button" type="submit" disabled={!title.trim() || !routeDraft.length}><Plane size={16} /> Create trip</button></form> : activeTrip ? <div className="trip-detail"><div className="trip-detail-hero"><div><span className={`trip-status ${activeTrip.status}`}>{activeTrip.status}</span><h3>{activeTrip.title}</h3><p>{activeTrip.destinations.map((destination) => destination.place).join(" → ")}</p></div><div className="trip-countdown"><strong>{activeTrip.status === "completed" ? "Done" : countdown === null ? "—" : countdown > 0 ? countdown : "Now"}</strong><span>{activeTrip.status === "completed" ? "completed" : countdown && countdown > 0 ? "days to go" : "trip timing"}</span></div></div><div className="trip-facts"><span><CalendarDays size={16} /><b>{activeTrip.startDate || "Open dates"}</b><small>{activeTrip.endDate ? `to ${activeTrip.endDate}` : "Flexible"}</small></span><span><Users size={16} /><b>{activeTrip.travellers}</b><small>travellers</small></span><span><Wallet size={16} /><b>{activeTrip.budget || "Open"}</b><small>budget</small></span><span><Route size={16} /><b>{activeTrip.destinations.length}</b><small>stops</small></span></div><div className="trip-route"><p className="trip-section-label">YOUR ROUTE</p><div>{activeTrip.destinations.map((stop,index) => <span key={stop.id}><i>{index + 1}</i><strong>{stop.place}</strong><small>{countryData[stop.country]?.flag ?? "🌍"} {stop.country}</small></span>)}</div></div><div className="planner-columns"><section><div className="planner-title"><div><ListChecks size={17} /><span><strong>Itinerary</strong><small>{activeTrip.itinerary.length} plans</small></span></div></div><div className="inline-plan-form"><input type="date" value={planDate} onChange={(event) => setPlanDate(event.target.value)} /><input type="time" value={planTime} onChange={(event) => setPlanTime(event.target.value)} /><input value={planTitle} onChange={(event) => setPlanTitle(event.target.value)} placeholder="Activity, stay or transport" onKeyDown={(event) => { if (event.key === "Enter") addItinerary(); }} /><button onClick={addItinerary}><Plus size={15} /></button></div><div className="itinerary-list">{activeTrip.itinerary.length ? activeTrip.itinerary.sort((a,b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`)).map((item,index) => <article key={item.id}><span>{index + 1}</span><div><strong>{item.title}</strong><small>{item.date || "Any day"} {item.time}</small></div><button onClick={() => onUpdate({ ...activeTrip, itinerary: activeTrip.itinerary.filter((entry) => entry.id !== item.id) })}><Trash2 size={13} /></button></article>) : <p className="planner-empty">Add the first moment to your itinerary.</p>}</div></section><section><div className="planner-title"><div><Check size={17} /><span><strong>Checklist</strong><small>{activeTrip.checklist.filter((item) => item.done).length}/{activeTrip.checklist.length} ready</small></span></div></div><div className="check-add"><input value={checkText} onChange={(event) => setCheckText(event.target.value)} placeholder="Passport, tickets, insurance…" onKeyDown={(event) => { if (event.key === "Enter") addChecklist(); }} /><button onClick={addChecklist}><Plus size={15} /></button></div><div className="check-list">{activeTrip.checklist.length ? activeTrip.checklist.map((item) => <label key={item.id} className={item.done ? "done" : ""}><input type="checkbox" checked={item.done} onChange={() => onUpdate({ ...activeTrip, checklist: activeTrip.checklist.map((entry) => entry.id === item.id ? { ...entry, done: !entry.done } : entry) })} /><span>{item.text}</span><button onClick={() => onUpdate({ ...activeTrip, checklist: activeTrip.checklist.filter((entry) => entry.id !== item.id) })}><X size={12} /></button></label>) : <p className="planner-empty">Add what you need before departure.</p>}</div></section></div><div className="trip-actions">{activeTrip.status !== "completed" && <button className="complete-trip" onClick={() => onComplete(activeTrip.id)}><Check size={15} /> Complete trip & update atlas</button>}<button className="delete-trip" onClick={() => { onDelete(activeTrip.id); setActiveId(null); setCreating(true); }}><Trash2 size={14} /> Delete trip</button></div></div> : null}</main></div>
-  </section></div>;
+  </Modal></div>;
 }
 
 const territoryLayouts: Record<string, { mainLabel: string; insets: Array<{ code: string; label: string }> }> = {
@@ -584,7 +585,7 @@ export default function HermesApp() {
     }, 0);
     if (!countryCode) return () => { window.clearTimeout(resetTimer); controller.abort(); };
     fetch(`/admin1/${countryCode}.json`, { signal: controller.signal })
-      .then((response) => response.ok ? response.json() : Promise.reject(new Error("No regional map")))
+      .then((response) => response.ok ? response.json() as Promise<{ features?: AdminRegion[] }> : Promise.reject(new Error("No regional map")))
       .then((collection: { features?: AdminRegion[] }) => {
         const nextRegions = collection.features ?? [];
         setRegions(nextRegions);
@@ -602,13 +603,6 @@ export default function HermesApp() {
   useEffect(() => () => {
     if (countryTransitionTimer.current) window.clearTimeout(countryTransitionTimer.current);
   }, []);
-
-  useEffect(() => {
-    if (!passportOpen && !achievementsOpen && !journalOpen && !tripsOpen) return;
-    const closePanels = (event: KeyboardEvent) => { if (event.key === "Escape") { setPassportOpen(false); setAchievementsOpen(false); setJournalOpen(false); setTripsOpen(false); } };
-    window.addEventListener("keydown", closePanels);
-    return () => window.removeEventListener("keydown", closePanels);
-  }, [passportOpen, achievementsOpen, journalOpen, tripsOpen]);
 
   const worldProjection = useMemo(
     () => geoMercator().fitExtent([[-12, 2], [1012, 548]], { type: "FeatureCollection", features: countries } as never),
