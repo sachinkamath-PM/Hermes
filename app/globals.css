@@ -81,3 +81,7 @@ button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline-color:
 @media(max-width:650px){.passport-hero-actions{display:none}.passport-data-actions{display:grid;grid-template-columns:1fr 1fr}.passport-data-actions button{min-width:0}.passport-goal-grid{grid-template-columns:1fr 1fr}}
 .menu-button,.mobile-menu{display:none!important}
 @media(max-width:920px){.hermes-header{grid-template-columns:1fr auto}.hermes-header>nav:not(.mobile-menu){display:none}.menu-button{display:grid!important}.mobile-menu{display:grid!important}}
+
+/* Native modal dialogs keep focus inside and make the underlying atlas inert. */
+dialog.achievement-panel,dialog.passport-panel,dialog.journal-panel,dialog.trip-panel{margin:auto;color:inherit;max-height:90dvh}
+dialog::backdrop{background:rgba(9,35,59,.45)}
